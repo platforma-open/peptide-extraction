@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@platforma-open/milaboratories.peptide-extraction.software": "workspace:*",
+    "@platforma-open/milaboratories.software-mitool": "catalog:",
     "@platforma-sdk/workflow-tengo": "catalog:"
   },
   "devDependencies": {
