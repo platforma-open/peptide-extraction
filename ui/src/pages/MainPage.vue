@@ -12,7 +12,7 @@ const data = reactive<{ settingsOpen: boolean }>({
 </script>
 
 <template>
-  <PlBlockPage>
+  <PlBlockPage title="Peptide Extraction">
     <template #append>
       <PlBtnGhost @click.stop="() => (data.settingsOpen = true)">
         Settings
@@ -21,6 +21,7 @@ const data = reactive<{ settingsOpen: boolean }>({
         </template>
       </PlBtnGhost>
     </template>
+    <!-- Placeholder for future results table -->
   </PlBlockPage>
   <PlSlideModal v-model="data.settingsOpen" :shadow="true" :close-on-outside-click="true">
     <template #title>Settings</template>
