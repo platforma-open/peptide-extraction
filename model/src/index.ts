@@ -8,6 +8,8 @@ export type BlockArgs = {
   errorBudget?: number;
   maxIndels?: number;
   autoR1OnlyAssembly?: boolean;
+  perProcessMemGB?: number;
+  perProcessCPUs?: number;
 };
 
 export const model = BlockModel.create()

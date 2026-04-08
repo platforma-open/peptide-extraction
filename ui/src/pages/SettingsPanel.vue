@@ -72,5 +72,27 @@ const autoR1OnlyAssembly = computed({
         </template>
       </PlTooltip>
     </PlCheckbox>
+
+    <PlNumberField
+      v-model="app.model.args.perProcessMemGB"
+      label="Memory per sample process (GB)"
+      :min-value="1"
+      :clearable="true"
+    >
+      <template #tooltip>
+        Override memory allocation per sample. Leave empty for automatic sizing.
+      </template>
+    </PlNumberField>
+
+    <PlNumberField
+      v-model="app.model.args.perProcessCPUs"
+      label="CPUs per sample process"
+      :min-value="1"
+      :clearable="true"
+    >
+      <template #tooltip>
+        Override CPU allocation per sample. Leave empty for automatic sizing.
+      </template>
+    </PlNumberField>
   </PlAccordionSection>
 </template>
