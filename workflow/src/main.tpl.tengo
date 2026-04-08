@@ -1,25 +1,117 @@
-// "hello world"
+// Peptide extraction block — main workflow template
+//
+// Orchestrates:
+// 1. Per-sample mitool pipeline (processColumn -> mitool-pipeline.tpl.tengo)
+// 2. Cross-sample aggregation (processColumn -> aggregate-peptides.tpl.tengo) [TODO]
+
 wf := import("@platforma-sdk/workflow-tengo:workflow")
-exec := import("@platforma-sdk/workflow-tengo:exec")
-assets:= import("@platforma-sdk/workflow-tengo:assets")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
 
-wf.body(func(args) {
-	python := exec.builder().
-		software(assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:hello-world-python")).
-		arg(args.name).
-		saveStdoutContent().
-		run()
-	pythonMessage := python.getStdoutContent()
+times := import("times")
 
-	tengoMessage := "Hello from Tengo, " + args.name + "!"
+mitoolPipelineTpl := assets.importTemplate(":mitool-pipeline")
 
+wf.prepare(func(args) {
 	return {
-		outputs: {
-			pythonMessage: pythonMessage,
-			tengoMessage: tengoMessage
-		},
-
-		exports: {}
+		resolvedInput: wf.resolve(args.input)
 	}
 })
 
+wf.body(func(args) {
+	blockId := wf.blockId().getDataAsJson()
+
+	inputSpec := args.resolvedInput.spec
+	inputData := args.resolvedInput.data
+
+	// Tag-stat output: one File per sample
+	tagStatOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/vdj/peptideTagStat",
+			domain: {
+				"pl7.app/vdj/peptideExtractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "tagStat"
+	}
+
+	// Log output for progress tracking
+	logOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/log",
+			domain: {
+				"pl7.app/vdj/peptideExtractionRunId": blockId
+			},
+			valueType: "Log"
+		},
+		name: "log"
+	}
+
+	// Step 1: Per-sample mitool pipeline
+	perSampleResults := pframes.processColumn(
+		{ spec: inputSpec, data: inputData },
+		mitoolPipelineTpl,
+		[tagStatOutput, logOutput],
+		{
+			aggregate: [{
+				name: "pl7.app/sequencing/lane",
+				optional: true
+			}, {
+				name: "pl7.app/sequencing/readIndex",
+				optional: true
+			}],
+
+			// resulting aggregation axes names will be checked against supported combinations
+			// in the body template
+			passAggregationAxesNames: true,
+
+			// this will cache each individual step result for 30 minutes, even if execution of some of the steps
+			// failed or whole execution was interrupted
+			stepCache: 30 * times.minute,
+
+			// will be automatically propagated to all output specs
+			traceSteps: [{
+				type: "milaboratories.peptide-extraction",
+				id: blockId,
+				importance: 20,
+				label: "Peptide Extraction"
+			}],
+			
+			extra: {
+				pattern: args.pattern,
+				errorBudget: args.errorBudget,
+				maxIndels: args.maxIndels,
+				minReadsPerConsensus: args.minReadsPerConsensus,
+				autoR1OnlyAssembly: args.autoR1OnlyAssembly
+			},
+
+			// by passing those parameters as meta fields we allow for recovery and deduplication mechanisms
+			// to pick up the results from executions with different values for CPU and Memory overrides
+			metaExtra: {
+				perProcessMemGB: args.perProcessMemGB,
+				perProcessCPUs: args.perProcessCPUs
+			}
+		}
+	)
+
+	// TODO: Step 2 — per-sample collapse (collapse-sample.tpl.tengo)
+	// TODO: Step 3 — cross-sample aggregation + Biopython (aggregate-peptides.tpl.tengo)
+
+	outputs := {
+		tagStats: pframes.exportColumnData(perSampleResults.outputData("tagStat")),
+		logs: perSampleResults.outputData("log")
+	}
+
+	exports := {}
+
+	return {
+		outputs: outputs,
+		exports: exports
+	}
+})
