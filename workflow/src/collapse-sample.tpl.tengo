@@ -1,0 +1,61 @@
+// Per-sample collapse: tag-stat TSV -> peptide abundance table
+//
+// Takes mitool tag-stat output (one row per molecule) and produces a peptide
+// table with molecule counts, read counts, and per-sample fractions.
+// Uses ptabler for the groupBy/aggregation.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+units := import("@platforma-sdk/workflow-tengo:units")
+
+self.defineOutputs("tsv")
+
+self.body(func(inputs) {
+	tagStatFile := inputs[pConstants.VALUE_FIELD_NAME]
+
+	wf := pt.workflow().
+		mem(4 * units.GiB).
+		cpu(1)
+
+	// tag-stat columns: R1 (peptide nt seq), UMI, UMI2, count (reads in molecule), totalWeight
+	df := wf.frame({
+		file: tagStatFile,
+		xsvType: "tsv",
+		schema: [
+			{ column: "R1", type: "String" },
+			{ column: "UMI", type: "String" },
+			{ column: "UMI2", type: "String" },
+			{ column: "count", type: "Long" },
+			{ column: "totalWeight", type: "Double" }
+		]
+	}, {
+		id: "tagstat",
+		inferSchema: false
+	})
+
+	// Group by peptide nt sequence: count molecules (rows), sum reads
+	collapsed := df.groupBy("R1").agg(
+		pt.col("R1").count().alias("uniqueMoleculeCount"),
+		pt.col("count").sum().alias("readCount")
+	)
+
+	// Per-sample normalization + rename R1 -> peptideKey
+	collapsed = collapsed.withColumns(
+		pt.col("R1").alias("peptideKey"),
+		pt.col("uniqueMoleculeCount").cast("Double").truediv(
+			pt.col("uniqueMoleculeCount").sum()
+		).alias("uniqueMoleculeFraction"),
+		pt.col("readCount").cast("Double").truediv(
+			pt.col("readCount").sum()
+		).alias("readFraction")
+	)
+
+	collapsed.save("peptides.tsv")
+
+	result := wf.run()
+
+	return {
+		tsv: result.getFile("peptides.tsv")
+	}
+})

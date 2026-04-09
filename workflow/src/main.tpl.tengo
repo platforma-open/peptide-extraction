@@ -12,6 +12,8 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
 times := import("times")
 
 mitoolPipelineTpl := assets.importTemplate(":mitool-pipeline")
+collapseSampleTpl := assets.importTemplate(":collapse-sample")
+columnSpecs := import(":column-specs")
 
 wf.prepare(func(args) {
 	return {
@@ -73,7 +75,7 @@ wf.body(func(args) {
 
 			// this will cache each individual step result for 30 minutes, even if execution of some of the steps
 			// failed or whole execution was interrupted
-			stepCache: 30 * times.minute,
+			//stepCache: 30 * times.minute,
 
 			// will be automatically propagated to all output specs
 			traceSteps: [{
@@ -100,15 +102,70 @@ wf.body(func(args) {
 		}
 	)
 
-	// TODO: Step 2 — per-sample collapse (collapse-sample.tpl.tengo)
+	// Step 2: Per-sample collapse (tag-stat -> peptide counts + fractions)
+	peptideKeyAxis := columnSpecs.peptideKeyAxisSpec(blockId)
+
+	// Raw TSV file per sample (for future aggregation step)
+	peptideTableFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/vdj/peptideTable",
+			domain: {
+				"pl7.app/vdj/peptideExtractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "peptideTableFile",
+		path: ["tsv"]
+	}
+
+	// Xsv decomposition into PColumns [sampleId, peptideKey]
+	peptideTableXsvOutput := {
+		type: "Xsv",
+		xsvType: "tsv",
+		settings: {
+			axes: [peptideKeyAxis],
+			columns: columnSpecs.columnsPerSample,
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		},
+		mem: "16GiB",
+		cpu: 2,
+		name: "peptideTableXsv",
+		path: ["tsv"]
+	}
+
+	collapseResults := pframes.processColumn(
+		perSampleResults.output("tagStat"),
+		collapseSampleTpl,
+		[peptideTableFileOutput, peptideTableXsvOutput],
+		{
+			//stepCache: 30 * times.minute,
+			traceSteps: [{
+				type: "milaboratories.peptide-extraction.collapse",
+				id: blockId,
+				importance: 40,
+				label: "Peptide Collapse"
+			}]
+		}
+	)
+
 	// TODO: Step 3 — cross-sample aggregation + Biopython (aggregate-peptides.tpl.tengo)
 
+	// Build pFrame from per-sample Xsv columns
+	peptidesPfBuilder := pframes.pFrameBuilder()
+	collapseResults.addXsvOutputToBuilder(peptidesPfBuilder, "peptideTableXsv", "perSample/")
+	peptidesPf := peptidesPfBuilder.build()
+
 	outputs := {
-		tagStats: pframes.exportColumnData(perSampleResults.outputData("tagStat")),
+		peptides: pframes.exportFrame(peptidesPf),
 		logs: perSampleResults.outputData("log")
 	}
 
-	exports := {}
+	exports := {
+		peptides: peptidesPf
+	}
 
 	return {
 		outputs: outputs,
