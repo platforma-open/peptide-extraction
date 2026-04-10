@@ -18,17 +18,17 @@ peptideKeyAxisSpec := func(blockId) {
 		column: "peptideKey",
 		naRegex: "",
 		spec: {
-			name: "pl7.app/vdj/peptideKey",
+			name: "pl7.app/peptide/peptideKey",
 			type: "String",
 			domain: {
-				"pl7.app/vdj/peptideExtractionRunId": blockId
+				"pl7.app/peptide/extractionRunId": blockId
 			},
 			annotations: {
 				"pl7.app/label": "Peptide ID",
 				"pl7.app/table/fontFamily": "monospace",
 				"pl7.app/table/visibility": "default",
 				"pl7.app/table/orderPriority": "110000",
-				"pl7.app/segmentedBy": "[\"pl7.app/vdj/peptideExtractionRunId\"]"
+				"pl7.app/segmentedBy": "[\"pl7.app/peptide/extractionRunId\"]"
 			}
 		}
 	}
@@ -42,7 +42,7 @@ columnsPerSample := [
 		id: "umi-count",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/vdj/uniqueMoleculeCount",
+			name: "pl7.app/peptide/uniqueMoleculeCount",
 			valueType: "Long",
 			annotations: a(88000, true, {
 				"pl7.app/min": "1",
@@ -60,7 +60,7 @@ columnsPerSample := [
 		id: "umi-fraction",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/vdj/uniqueMoleculeFraction",
+			name: "pl7.app/peptide/uniqueMoleculeFraction",
 			valueType: "Double",
 			annotations: a(87500, true, {
 				"pl7.app/min": "0",
@@ -79,7 +79,7 @@ columnsPerSample := [
 		id: "read-count",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/vdj/readCount",
+			name: "pl7.app/peptide/readCount",
 			valueType: "Long",
 			annotations: a(90000, false, {
 				"pl7.app/min": "1",
@@ -95,7 +95,7 @@ columnsPerSample := [
 		id: "read-fraction",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/vdj/readFraction",
+			name: "pl7.app/peptide/readFraction",
 			valueType: "Double",
 			annotations: a(89000, false, {
 				"pl7.app/min": "0",
@@ -119,15 +119,15 @@ columnsPerPeptideFromSample := [
 		column: "nSeqPeptide",
 		id: "n-seq-peptide",
 		spec: {
-			name: "pl7.app/vdj/sequence",
+			name: "pl7.app/peptide/sequence",
 			valueType: "String",
 			domain: {
-				"pl7.app/vdj/feature": "peptide",
+				"pl7.app/peptide/feature": "peptide",
 				"pl7.app/alphabet": "nucleotide"
 			},
 			annotations: a(80000, false, {
-				"pl7.app/vdj/isAssemblingFeature": "true",
-				"pl7.app/vdj/isMainSequence": "true",
+				"pl7.app/peptide/isAssemblingFeature": "true",
+				"pl7.app/peptide/isMainSequence": "true",
 				"pl7.app/table/fontFamily": "monospace",
 				"pl7.app/label": "Peptide nt"
 			})
@@ -137,15 +137,15 @@ columnsPerPeptideFromSample := [
 		column: "aaSeqPeptide",
 		id: "aa-seq-peptide",
 		spec: {
-			name: "pl7.app/vdj/sequence",
+			name: "pl7.app/peptide/sequence",
 			valueType: "String",
 			domain: {
-				"pl7.app/vdj/feature": "peptide",
+				"pl7.app/peptide/feature": "peptide",
 				"pl7.app/alphabet": "aminoacid"
 			},
 			annotations: a(79900, true, {
-				"pl7.app/vdj/isAssemblingFeature": "true",
-				"pl7.app/vdj/isMainSequence": "true",
+				"pl7.app/peptide/isAssemblingFeature": "true",
+				"pl7.app/peptide/isMainSequence": "true",
 				"pl7.app/table/fontFamily": "monospace",
 				"pl7.app/label": "Peptide aa"
 			})
@@ -155,14 +155,29 @@ columnsPerPeptideFromSample := [
 		column: "aaLengthPeptide",
 		id: "aa-length-peptide",
 		spec: {
-			name: "pl7.app/vdj/sequenceLength",
+			name: "pl7.app/peptide/sequenceLength",
 			valueType: "Int",
 			domain: {
-				"pl7.app/vdj/feature": "peptide",
+				"pl7.app/peptide/feature": "peptide",
 				"pl7.app/alphabet": "aminoacid"
 			},
 			annotations: a(79800, true, {
 				"pl7.app/label": "Peptide length (aa)"
+			})
+		}
+	},
+	{
+		column: "ntLengthPeptide",
+		id: "nt-length-peptide",
+		spec: {
+			name: "pl7.app/peptide/sequenceLength",
+			valueType: "Int",
+			domain: {
+				"pl7.app/peptide/feature": "peptide",
+				"pl7.app/alphabet": "nucleotide"
+			},
+			annotations: a(79700, false, {
+				"pl7.app/label": "Peptide length (nt)"
 			})
 		}
 	}
@@ -176,7 +191,7 @@ columnsAggregated := [
 		id: "umi-count-total",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/vdj/uniqueMoleculeCountTotal",
+			name: "pl7.app/peptide/uniqueMoleculeCountTotal",
 			valueType: "Long",
 			annotations: a(87120, true, {
 				"pl7.app/min": "1",
@@ -192,7 +207,7 @@ columnsAggregated := [
 		id: "sample-count",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/vdj/sampleCount",
+			name: "pl7.app/peptide/sampleCount",
 			valueType: "Int",
 			annotations: a(87110, true, {
 				"pl7.app/min": "1",
@@ -208,7 +223,7 @@ columnsAggregated := [
 		id: "umi-fraction-mean",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/vdj/uniqueMoleculeFractionMean",
+			name: "pl7.app/peptide/uniqueMoleculeFractionMean",
 			valueType: "Double",
 			annotations: a(87130, false, {
 				"pl7.app/description": "The average UMI fraction of a peptide across all samples where it is present.",
@@ -230,6 +245,82 @@ columnsAggregated := [
 			valueType: "String",
 			annotations: a(100000, false, {
 				"pl7.app/label": "Peptide Id"
+			})
+		}
+	},
+	{
+		column: "peptideCharge",
+		id: "peptide-charge",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/peptide/charge",
+			valueType: "Double",
+			annotations: a(70000, true, {
+				"pl7.app/label": "Net Charge (pH 7)",
+				"pl7.app/format": ".2f"
+			})
+		}
+	},
+	{
+		column: "peptideHydrophobicity",
+		id: "peptide-hydrophobicity",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/peptide/hydrophobicity",
+			valueType: "Double",
+			annotations: a(69900, true, {
+				"pl7.app/label": "Hydrophobicity (GRAVY)",
+				"pl7.app/format": ".3f"
+			})
+		}
+	},
+	{
+		column: "peptideMolecularWeight",
+		id: "peptide-molecular-weight",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/peptide/molecularWeight",
+			valueType: "Double",
+			annotations: a(69800, true, {
+				"pl7.app/label": "Molecular Weight (Da)",
+				"pl7.app/format": ".1f"
+			})
+		}
+	},
+	{
+		column: "peptideIsoelectricPoint",
+		id: "peptide-isoelectric-point",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/peptide/isoelectricPoint",
+			valueType: "Double",
+			annotations: a(69700, true, {
+				"pl7.app/label": "Isoelectric Point (pI)",
+				"pl7.app/format": ".2f"
+			})
+		}
+	},
+	{
+		column: "hasTrailingNucleotides",
+		id: "has-trailing-nucleotides",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/peptide/hasTrailingNucleotides",
+			valueType: "String",
+			annotations: a(60000, false, {
+				"pl7.app/label": "Trailing Nucleotides"
+			})
+		}
+	},
+	{
+		column: "hasEarlyStopCodon",
+		id: "has-early-stop-codon",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/peptide/hasEarlyStopCodon",
+			valueType: "String",
+			annotations: a(59900, false, {
+				"pl7.app/label": "Early Stop Codon"
 			})
 		}
 	}

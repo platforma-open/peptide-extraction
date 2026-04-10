@@ -1,8 +1,8 @@
 // Peptide extraction block — main workflow template
 //
 // Orchestrates:
-// 1. Per-sample mitool pipeline (processColumn -> mitool-pipeline.tpl.tengo)
-// 2. Cross-sample aggregation (processColumn -> aggregate-peptides.tpl.tengo) [TODO]
+// 1. Per-sample mitool pipeline + collapse (processColumn -> mitool-pipeline.tpl.tengo)
+// 2. Cross-sample aggregation + Biopython (processColumn -> aggregate-peptides.tpl.tengo)
 
 wf := import("@platforma-sdk/workflow-tengo:workflow")
 ll := import("@platforma-sdk/workflow-tengo:ll")
@@ -12,7 +12,7 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
 times := import("times")
 
 mitoolPipelineTpl := assets.importTemplate(":mitool-pipeline")
-collapseSampleTpl := assets.importTemplate(":collapse-sample")
+aggregatePeptidesTpl := assets.importTemplate(":aggregate-peptides")
 columnSpecs := import(":column-specs")
 
 wf.prepare(func(args) {
@@ -27,39 +27,57 @@ wf.body(func(args) {
 	inputSpec := args.resolvedInput.spec
 	inputData := args.resolvedInput.data
 
-	// Tag-stat output: one File per sample
-	tagStatOutput := {
+	peptideKeyAxis := columnSpecs.peptideKeyAxisSpec(blockId)
+
+	// Step 1: Per-sample mitool pipeline + collapse
+	// Outputs: peptide table TSV (Resource + Xsv) and log per sample
+
+	peptideTableFileOutput := {
 		type: "Resource",
 		spec: {
 			kind: "PColumn",
-			name: "pl7.app/vdj/peptideTagStat",
+			name: "pl7.app/peptide/peptideTable",
 			domain: {
-				"pl7.app/vdj/peptideExtractionRunId": blockId
+				"pl7.app/peptide/extractionRunId": blockId
 			},
 			valueType: "File"
 		},
-		name: "tagStat"
+		name: "peptideTableFile",
+		path: ["tsv"]
 	}
 
-	// Log output for progress tracking
+	peptideTableXsvOutput := {
+		type: "Xsv",
+		xsvType: "tsv",
+		settings: {
+			axes: [peptideKeyAxis],
+			columns: columnSpecs.columnsPerSample,
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		},
+		mem: "16GiB",
+		cpu: 2,
+		name: "peptideTableXsv",
+		path: ["tsv"]
+	}
+
 	logOutput := {
 		type: "Resource",
 		spec: {
 			kind: "PColumn",
 			name: "pl7.app/log",
 			domain: {
-				"pl7.app/vdj/peptideExtractionRunId": blockId
+				"pl7.app/peptide/extractionRunId": blockId
 			},
 			valueType: "Log"
 		},
 		name: "log"
 	}
 
-	// Step 1: Per-sample mitool pipeline
 	perSampleResults := pframes.processColumn(
 		{ spec: inputSpec, data: inputData },
 		mitoolPipelineTpl,
-		[tagStatOutput, logOutput],
+		[peptideTableFileOutput, peptideTableXsvOutput, logOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sequencing/lane",
@@ -84,7 +102,7 @@ wf.body(func(args) {
 				importance: 20,
 				label: "Peptide Extraction"
 			}],
-			
+
 			extra: {
 				pattern: args.pattern,
 				errorBudget: args.errorBudget,
@@ -102,60 +120,45 @@ wf.body(func(args) {
 		}
 	)
 
-	// Step 2: Per-sample collapse (tag-stat -> peptide counts + fractions)
-	peptideKeyAxis := columnSpecs.peptideKeyAxisSpec(blockId)
-
-	// Raw TSV file per sample (for future aggregation step)
-	peptideTableFileOutput := {
-		type: "Resource",
-		spec: {
-			kind: "PColumn",
-			name: "pl7.app/vdj/peptideTable",
-			domain: {
-				"pl7.app/vdj/peptideExtractionRunId": blockId
-			},
-			valueType: "File"
-		},
-		name: "peptideTableFile",
-		path: ["tsv"]
-	}
-
-	// Xsv decomposition into PColumns [sampleId, peptideKey]
-	peptideTableXsvOutput := {
+	// Step 2: Cross-sample aggregation + properties
+	perPeptideXsvOutput := {
 		type: "Xsv",
 		xsvType: "tsv",
 		settings: {
 			axes: [peptideKeyAxis],
-			columns: columnSpecs.columnsPerSample,
+			columns: columnSpecs.columnsPerPeptideFromSample + columnSpecs.columnsAggregated,
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		},
 		mem: "16GiB",
 		cpu: 2,
-		name: "peptideTableXsv",
+		name: "perPeptideXsv",
 		path: ["tsv"]
 	}
 
-	collapseResults := pframes.processColumn(
-		perSampleResults.output("tagStat"),
-		collapseSampleTpl,
-		[peptideTableFileOutput, peptideTableXsvOutput],
+	aggregateResults := pframes.processColumn(
+		perSampleResults.output("peptideTableFile"),
+		aggregatePeptidesTpl,
+		[perPeptideXsvOutput],
 		{
+			aggregate: [{
+				name: "pl7.app/sampleId",
+				anonymize: true
+			}],
 			//stepCache: 30 * times.minute,
 			traceSteps: [{
-				type: "milaboratories.peptide-extraction.collapse",
+				type: "milaboratories.peptide-extraction.aggregate",
 				id: blockId,
-				importance: 40,
-				label: "Peptide Collapse"
+				importance: 60,
+				label: "Peptide Aggregation"
 			}]
 		}
 	)
 
-	// TODO: Step 3 — cross-sample aggregation + Biopython (aggregate-peptides.tpl.tengo)
-
-	// Build pFrame from per-sample Xsv columns
+	// Build pFrame from per-sample Xsv + aggregated Xsv
 	peptidesPfBuilder := pframes.pFrameBuilder()
-	collapseResults.addXsvOutputToBuilder(peptidesPfBuilder, "peptideTableXsv", "perSample/")
+	perSampleResults.addXsvOutputToBuilder(peptidesPfBuilder, "peptideTableXsv", "perSample/")
+	aggregateResults.addXsvOutputToBuilder(peptidesPfBuilder, "perPeptideXsv", "perPeptide/")
 	peptidesPf := peptidesPfBuilder.build()
 
 	outputs := {

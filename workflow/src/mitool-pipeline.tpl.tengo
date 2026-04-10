@@ -1,7 +1,7 @@
-// Per-sample mitool pipeline: parse -> refine-tags -> sort -> consensus -> tag-stat -> collapse
+// Per-sample mitool pipeline: parse -> refine -> sort -> consensus -> tag-stat -> collapse
 //
 // Runs inside pframes.processColumn, receives FASTQ files for one sample.
-// Outputs a TSV with per-sample peptide abundance data.
+// Outputs a per-sample peptide table TSV with abundance columns.
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
@@ -9,11 +9,12 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+units := import("@platforma-sdk/workflow-tengo:units")
 
 json := import("json")
-text := import("text")
 
-self.defineOutputs("tagStat", "log")
+self.defineOutputs("tsv", "log")
 
 mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
 
@@ -246,8 +247,56 @@ self.body(func(inputs) {
 
 	tagStatTsv := tagStatCmd.getFile("tagstat.tsv")
 
+	// =========================================================================
+	// Step 6: Collapse tag-stat to peptide table
+	//
+	// Groups by peptide nt sequence, counts molecules, sums reads,
+	// computes per-sample fractions.
+	// =========================================================================
+
+	collapseWf := pt.workflow().
+		mem(4 * units.GiB).
+		cpu(1)
+
+	// tag-stat columns: R1 (peptide nt seq), UMI, UMI2, count (reads in molecule), totalWeight
+	df := collapseWf.frame({
+		file: tagStatTsv,
+		xsvType: "tsv",
+		schema: [
+			{ column: "R1", type: "String" },
+			{ column: "UMI", type: "String" },
+			{ column: "UMI2", type: "String" },
+			{ column: "count", type: "Long" },
+			{ column: "totalWeight", type: "Double" }
+		]
+	}, {
+		id: "tagstat",
+		inferSchema: false
+	})
+
+	// Group by peptide nt sequence: count molecules (rows), sum reads
+	collapsed := df.groupBy("R1").agg(
+		pt.col("R1").count().alias("uniqueMoleculeCount"),
+		pt.col("count").sum().alias("readCount")
+	)
+
+	// Per-sample normalization + rename R1 -> peptideKey
+	collapsed = collapsed.withColumns(
+		pt.col("R1").alias("peptideKey"),
+		pt.col("uniqueMoleculeCount").cast("Double").truediv(
+			pt.col("uniqueMoleculeCount").sum()
+		).alias("uniqueMoleculeFraction"),
+		pt.col("readCount").cast("Double").truediv(
+			pt.col("readCount").sum()
+		).alias("readFraction")
+	)
+
+	collapsed.save("peptides.tsv")
+	collapseResult := collapseWf.run()
+	peptidesTsv := collapseResult.getFile("peptides.tsv")
+
 	return {
-		tagStat: tagStatTsv,
+		tsv: peptidesTsv,
 		log: parseCmd.getStdoutStream()
 	}
 })

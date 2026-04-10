@@ -24,10 +24,10 @@
       }
     },
     "entrypoints": {
-      "hello-world-python": {
+      "peptide-properties": {
         "binary": {
           "artifact": "py-archive",
-          "cmd": [ "python", "{pkg}/hello.py" ]
+          "cmd": [ "python", "{pkg}/peptide_properties_mock.py" ]
         }
       }
     }
