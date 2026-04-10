@@ -75,23 +75,27 @@ wf.body(func(args) {
 		path: ["tsv"]
 	}
 
-	logOutput := {
-		type: "Resource",
+	stepLogsOutput := {
+		type: "ResourceMap",
 		spec: {
 			kind: "PColumn",
 			name: "pl7.app/log",
 			domain: {
 				"pl7.app/peptide/extractionRunId": blockId
 			},
-			valueType: "Log"
+			valueType: "Log",
+			axesSpec: [{
+				name: "pl7.app/peptide/step",
+				type: "String"
+			}]
 		},
-		name: "log"
+		name: "stepLogs"
 	}
 
 	perSampleResults := pframes.processColumn(
 		{ spec: inputSpec, data: inputData },
 		mitoolPipelineTpl,
-		[peptideTableFileOutput, peptideTableXsvOutput, logOutput],
+		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sequencing/lane",
@@ -201,7 +205,7 @@ wf.body(func(args) {
 
 	outputs := {
 		peptides: pframes.exportFrame(peptidesPf),
-		logs: perSampleResults.outputData("log")
+		stepLogs: perSampleResults.outputData("stepLogs")
 	}
 
 	exports := {

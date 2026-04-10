@@ -5,6 +5,7 @@
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+pcolumn := import("@platforma-sdk/workflow-tengo:pframes.pcolumn")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
@@ -14,7 +15,7 @@ units := import("@platforma-sdk/workflow-tengo:units")
 
 json := import("json")
 
-self.defineOutputs("tsv", "log")
+self.defineOutputs("tsv", "stepLogs")
 
 mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
 
@@ -141,6 +142,8 @@ self.body(func(inputs) {
 
 	refineCmd := exec.builder().
 		printErrStreamToStdout().
+		saveStdoutStream().
+		env("MI_PROGRESS_PREFIX", progressPrefix).
 		software(mitoolSw).
 		cpu(mitoolCPUs).
 		mem(mitoolMem).
@@ -163,6 +166,8 @@ self.body(func(inputs) {
 
 	sortCmd := exec.builder().
 		printErrStreamToStdout().
+		saveStdoutStream().
+		env("MI_PROGRESS_PREFIX", progressPrefix).
 		software(mitoolSw).
 		cpu(mitoolCPUs).
 		mem(mitoolMem).
@@ -185,6 +190,8 @@ self.body(func(inputs) {
 	buildConsensusCmd := func(sortedFile, assembleR2) {
 		cmd := exec.builder().
 			printErrStreamToStdout().
+			saveStdoutStream().
+			env("MI_PROGRESS_PREFIX", progressPrefix).
 			software(mitoolSw).
 			cpu(mitoolCPUs).
 			mem(mitoolMem).
@@ -227,6 +234,8 @@ self.body(func(inputs) {
 
 	tagStatCmd := exec.builder().
 		printErrStreamToStdout().
+		saveStdoutStream().
+		env("MI_PROGRESS_PREFIX", progressPrefix).
 		software(mitoolSw).
 		cpu(mitoolCPUs).
 		mem(mitoolMem).
@@ -290,8 +299,16 @@ self.body(func(inputs) {
 	collapseResult := collapseWf.run()
 	peptidesTsv := collapseResult.getFile("peptides.tsv")
 
+	// Collect all step logs into a ResourceMap keyed by step name
+	stepLogs := pcolumn.resourceMapBuilder(1)
+	stepLogs.add(["1-parse"], parseCmd.getStdoutStream())
+	stepLogs.add(["2-refine"], refineCmd.getStdoutStream())
+	stepLogs.add(["3-sort"], sortCmd.getStdoutStream())
+	stepLogs.add(["4-consensus"], consensusCmd.getStdoutStream())
+	stepLogs.add(["5-tagstat"], tagStatCmd.getStdoutStream())
+
 	return {
 		tsv: peptidesTsv,
-		log: parseCmd.getStdoutStream()
+		stepLogs: stepLogs.build()
 	}
 })

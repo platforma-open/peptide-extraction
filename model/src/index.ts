@@ -42,16 +42,16 @@ export const model = BlockModel.create()
 
   .output("started", (ctx) => ctx.outputs !== undefined)
 
-  .output("logs", (ctx) => {
+  .output("stepLogs", (ctx) => {
     return ctx.outputs !== undefined
-      ? parseResourceMap(ctx.outputs?.resolve("logs"), (acc) => acc.getLogHandle(), false)
+      ? parseResourceMap(ctx.outputs?.resolve("stepLogs"), (acc) => acc.getLogHandle(), false)
       : undefined;
   })
 
   .output("progress", (ctx) => {
     return ctx.outputs !== undefined
       ? parseResourceMap(
-          ctx.outputs?.resolve("logs"),
+          ctx.outputs?.resolve("stepLogs"),
           (acc) => acc.getProgressLogWithInfo(ProgressPrefix),
           false,
         )
