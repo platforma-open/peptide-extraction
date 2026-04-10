@@ -16,16 +16,24 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
 
   // Use progress output as the source of sample IDs — it only contains
   // samples from the selected dataset (scoped by the workflow's processColumn).
-  // sampleLabels comes from the result pool and may include samples from other datasets.
   if (progress === undefined) return undefined;
 
   const results: SampleResult[] = progress.data
     .map((p) => {
       const sampleId = p.key[0] as string;
+      const info = p.value;
+      let progressStr = "Queued";
+      if (info) {
+        if (!info.live) {
+          progressStr = "Done";
+        } else if (info.progressLine) {
+          progressStr = info.progressLine.replace(ProgressPrefix, "");
+        }
+      }
       return {
         sampleId,
         label: sampleLabels?.[sampleId] ?? sampleId,
-        progress: p.value ? p.value.replace(ProgressPrefix, "") : "Queued",
+        progress: progressStr,
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));

@@ -34,7 +34,6 @@ watch(
   (newVal, oldVal) => {
     if (oldVal === false && newVal === true) {
       data.settingsOpen = false;
-      gridApi.value?.showLoadingOverlay();
     }
     if (oldVal === true && newVal === false) {
       data.settingsOpen = true;
@@ -90,10 +89,13 @@ const columnDefs: ColDef<SampleResult>[] = [
         };
       }
 
+      const percentText = parsed.percentage
+        ? `${parsed.stage}: ${parsed.percentage}%`
+        : parsed.stage;
       return {
         status: parsed.stage === "Done" ? "done" : "running",
         percent: parsed.percentage,
-        text: parsed.stage,
+        text: percentText,
         suffix: parsed.etaLabel ?? "",
       };
     },

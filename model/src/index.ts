@@ -52,7 +52,7 @@ export const model = BlockModel.create()
     return ctx.outputs !== undefined
       ? parseResourceMap(
           ctx.outputs?.resolve("logs"),
-          (acc) => acc.getProgressLog(ProgressPrefix),
+          (acc) => acc.getProgressLogWithInfo(ProgressPrefix),
           false,
         )
       : undefined;
