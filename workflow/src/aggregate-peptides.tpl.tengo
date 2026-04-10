@@ -25,15 +25,18 @@ self.body(func(inputs) {
 
 	ll.assert(inputDataMeta.keyLength == 1, "unexpected number of aggregation axes")
 
+	aggMinMemGB := inputs.aggMinMemGB
+	aggMinCPUs := inputs.aggMinCPUs
+	propertiesMemGB := inputs.propertiesMemGB
+	propertiesCPUs := inputs.propertiesCPUs
+
 	inputMap := inputData.inputs()
 	numberOfSamples := len(inputMap)
 
-	memGB := int(math.max(numberOfSamples, 8))
-
 	// Step 1: ptabler — merge all samples, compute cross-sample aggregates
 	wf := pt.workflow().
-		mem(memGB * units.GiB).
-		cpu(int(math.max(numberOfSamples, 4)))
+		mem(int(math.max(numberOfSamples, aggMinMemGB)) * units.GiB).
+		cpu(int(math.max(numberOfSamples, aggMinCPUs)))
 
 	baseSchema := [
 		{ column: "peptideKey", type: "String" },
@@ -88,8 +91,8 @@ self.body(func(inputs) {
 	propsCmd := exec.builder().
 		printErrStreamToStdout().
 		software(peptidePropertiesSw).
-		cpu(1).
-		mem("4GiB").
+		cpu(propertiesCPUs).
+		mem(string(propertiesMemGB) + "GiB").
 		arg("aggregated.tsv").
 		arg("properties.tsv").
 		arg("composition.tsv").

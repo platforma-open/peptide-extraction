@@ -29,22 +29,17 @@ self.body(func(inputs) {
 	maxIndels := inputs.maxIndels
 	minReadsPerConsensus := inputs.minReadsPerConsensus
 	autoR1OnlyAssembly := inputs.autoR1OnlyAssembly
-	perProcessMemGB := inputs.perProcessMemGB
-	perProcessCPUs := inputs.perProcessCPUs
+	mitoolMemGB := inputs.mitoolMemGB
+	mitoolCPUs := inputs.mitoolCPUs
+	collapseMemGB := inputs.collapseMemGB
+	collapseCPUs := inputs.collapseCPUs
 
 	ll.assert(!is_undefined(pattern) && pattern != "", "mitool parse pattern is required")
 
 	inputDataMeta := inputData.getDataAsJson()
 
-	// Default resource allocation
-	cpus := 8
-	if !is_undefined(perProcessCPUs) {
-		cpus = perProcessCPUs
-	}
-	memStr := "32GiB"
-	if !is_undefined(perProcessMemGB) {
-		memStr = string(perProcessMemGB) + "GiB"
-	}
+	mitoolMem := string(mitoolMemGB) + "GiB"
+	collapseMem := string(collapseMemGB) + "GiB"
 
 	// Collect R1 and R2 FASTQ files from the aggregated input
 	R1Files := []
@@ -122,8 +117,8 @@ self.body(func(inputs) {
 		saveStdoutStream().
 		env("MI_PROGRESS_PREFIX", progressPrefix).
 		software(mitoolSw).
-		cpu(cpus).
-		mem(memStr).
+		cpu(mitoolCPUs).
+		mem(mitoolMem).
 		arg("parse").
 		arg("--pattern").arg(pattern).
 		arg("--max-error-budget").arg(string(errorBudget)).
@@ -147,8 +142,8 @@ self.body(func(inputs) {
 	refineCmd := exec.builder().
 		printErrStreamToStdout().
 		software(mitoolSw).
-		cpu(cpus).
-		mem(memStr).
+		cpu(mitoolCPUs).
+		mem(mitoolMem).
 		arg("refine-tags").
 		arg("-t").arg("UMI").
 		arg("-t").arg("UMI2").
@@ -169,8 +164,8 @@ self.body(func(inputs) {
 	sortCmd := exec.builder().
 		printErrStreamToStdout().
 		software(mitoolSw).
-		cpu(cpus).
-		mem(memStr).
+		cpu(mitoolCPUs).
+		mem(mitoolMem).
 		arg("sort").
 		arg("-s").arg("UMI").
 		arg("-s").arg("UMI2").
@@ -191,8 +186,8 @@ self.body(func(inputs) {
 		cmd := exec.builder().
 			printErrStreamToStdout().
 			software(mitoolSw).
-			cpu(cpus).
-			mem(memStr).
+			cpu(mitoolCPUs).
+			mem(mitoolMem).
 			arg("consensus").
 			arg("--group-tag").arg("UMI").
 			arg("--group-tag").arg("UMI2").
@@ -233,8 +228,8 @@ self.body(func(inputs) {
 	tagStatCmd := exec.builder().
 		printErrStreamToStdout().
 		software(mitoolSw).
-		cpu(cpus).
-		mem(memStr).
+		cpu(mitoolCPUs).
+		mem(mitoolMem).
 		arg("tag-stat").
 		arg("-t").arg("R1").
 		arg("-t").arg("UMI").
@@ -255,8 +250,8 @@ self.body(func(inputs) {
 	// =========================================================================
 
 	collapseWf := pt.workflow().
-		mem(4 * units.GiB).
-		cpu(1)
+		mem(collapseMemGB * units.GiB).
+		cpu(collapseCPUs)
 
 	// tag-stat columns: R1 (peptide nt seq), UMI, UMI2, count (reads in molecule), totalWeight
 	df := collapseWf.frame({

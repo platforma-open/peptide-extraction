@@ -21,6 +21,20 @@ wf.prepare(func(args) {
 	}
 })
 
+// --- Resource allocation defaults ---
+// All in one place for easy tuning. User overrides via perProcessMemGB/perProcessCPUs.
+
+defaultMitoolMemGB := 32      // per-sample mitool steps (parse, refine, sort, consensus, tag-stat)
+defaultMitoolCPUs := 8
+defaultCollapseMemGB := 4     // per-sample ptabler collapse (groupby on tag-stat)
+defaultCollapseCPUs := 1
+defaultAggMinMemGB := 8       // ptabler aggregation (minimum, scales with sample count)
+defaultAggMinCPUs := 4        // ptabler aggregation (minimum, scales with sample count)
+defaultPropertiesMemGB := 4   // Python properties script (translation, properties)
+defaultPropertiesCPUs := 1
+defaultXsvMemGB := 16         // Xsv import (parquet conversion)
+defaultXsvCPUs := 2
+
 wf.body(func(args) {
 	blockId := wf.blockId().getDataAsJson()
 
@@ -55,8 +69,8 @@ wf.body(func(args) {
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		},
-		mem: "16GiB",
-		cpu: 2,
+		mem: string(defaultXsvMemGB) + "GiB",
+		cpu: defaultXsvCPUs,
 		name: "peptideTableXsv",
 		path: ["tsv"]
 	}
@@ -114,8 +128,10 @@ wf.body(func(args) {
 			// by passing those parameters as meta fields we allow for recovery and deduplication mechanisms
 			// to pick up the results from executions with different values for CPU and Memory overrides
 			metaExtra: {
-				perProcessMemGB: args.perProcessMemGB,
-				perProcessCPUs: args.perProcessCPUs
+				mitoolMemGB: is_undefined(args.perProcessMemGB) ? defaultMitoolMemGB : args.perProcessMemGB,
+				mitoolCPUs: is_undefined(args.perProcessCPUs) ? defaultMitoolCPUs : args.perProcessCPUs,
+				collapseMemGB: defaultCollapseMemGB,
+				collapseCPUs: defaultCollapseCPUs
 			}
 		}
 	)
@@ -130,8 +146,8 @@ wf.body(func(args) {
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		},
-		mem: "16GiB",
-		cpu: 2,
+		mem: string(defaultXsvMemGB) + "GiB",
+		cpu: defaultXsvCPUs,
 		name: "perPeptideXsv",
 		path: ["propertiesTsv"]
 	}
@@ -145,8 +161,8 @@ wf.body(func(args) {
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		},
-		mem: "16GiB",
-		cpu: 2,
+		mem: string(defaultXsvMemGB) + "GiB",
+		cpu: defaultXsvCPUs,
 		name: "compositionXsv",
 		path: ["compositionTsv"]
 	}
@@ -161,6 +177,12 @@ wf.body(func(args) {
 				anonymize: true
 			}],
 			//stepCache: 30 * times.minute,
+			metaExtra: {
+				aggMinMemGB: defaultAggMinMemGB,
+				aggMinCPUs: defaultAggMinCPUs,
+				propertiesMemGB: defaultPropertiesMemGB,
+				propertiesCPUs: defaultPropertiesCPUs
+			},
 			traceSteps: [{
 				type: "milaboratories.peptide-extraction.aggregate",
 				id: blockId,
