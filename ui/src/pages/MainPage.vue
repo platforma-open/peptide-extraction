@@ -21,6 +21,7 @@ import { useApp } from "../app";
 import { parseProgressString } from "../parseProgress";
 import type { SampleResult } from "../results";
 import { sampleResults } from "../results";
+import SampleReportPanel from "./SampleReportPanel.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 
 const app = useApp();
@@ -32,8 +33,26 @@ watchEffect(() => {
   app.model.data.defaultBlockLabel = inputOption?.label ?? "";
 });
 
-const data = reactive<{ settingsOpen: boolean }>({
-  settingsOpen: app.model.outputs.started === false,
+const data = reactive<{
+  activePanel: "settings" | "report" | null;
+  selectedSample: string | undefined;
+}>({
+  activePanel: app.model.outputs.started === false ? "settings" : null,
+  selectedSample: undefined,
+});
+
+const settingsOpen = computed({
+  get: () => data.activePanel === "settings",
+  set: (val: boolean) => {
+    data.activePanel = val ? "settings" : null;
+  },
+});
+
+const sampleReportOpen = computed({
+  get: () => data.activePanel === "report",
+  set: (val: boolean) => {
+    data.activePanel = val ? "report" : null;
+  },
 });
 
 // Auto-open/close settings based on block state
@@ -41,10 +60,10 @@ watch(
   () => app.model.outputs.started,
   (newVal, oldVal) => {
     if (oldVal === false && newVal === true) {
-      data.settingsOpen = false;
+      data.activePanel = null;
     }
     if (oldVal === true && newVal === false) {
-      data.settingsOpen = true;
+      data.activePanel = "settings";
     }
   },
 );
@@ -112,13 +131,17 @@ const columnDefs: ColDef<SampleResult>[] = [
 
 const gridOptions = {
   getRowId: (row: { data: SampleResult }) => row.data.sampleId,
+  onRowDoubleClicked: (e: { data?: SampleResult }) => {
+    data.selectedSample = e.data?.sampleId;
+    if (data.selectedSample !== undefined) data.activePanel = "report";
+  },
 };
 </script>
 
 <template>
   <PlBlockPage title="Peptide Extraction">
     <template #append>
-      <PlBtnGhost @click.stop="() => (data.settingsOpen = true)">
+      <PlBtnGhost @click.stop="() => (data.activePanel = 'settings')">
         Settings
         <template #append>
           <PlMaskIcon24 name="settings" />
@@ -141,11 +164,24 @@ const gridOptions = {
     </div>
   </PlBlockPage>
   <PlSlideModal
-    v-model="data.settingsOpen"
+    v-model="settingsOpen"
     :shadow="true"
     :close-on-outside-click="app.model.outputs.started"
   >
     <template #title>Settings</template>
     <SettingsPanel />
+  </PlSlideModal>
+  <PlSlideModal
+    v-model="sampleReportOpen"
+    :close-on-outside-click="app.model.outputs.started"
+    width="80%"
+  >
+    <template #title>
+      {{
+        (data.selectedSample ? app.model.outputs.sampleLabels?.[data.selectedSample] : undefined) ??
+        "..."
+      }}
+    </template>
+    <SampleReportPanel v-model="data.selectedSample" />
   </PlSlideModal>
 </template>
