@@ -12,6 +12,7 @@
   "dependencies": {
     "@platforma-open/milaboratories.peptide-extraction.model": "workspace:*",
     "@platforma-sdk/ui-vue": "catalog:",
+    "@platforma-sdk/model": "catalog:",
     "ag-grid-enterprise": "catalog:",
     "ag-grid-vue3": "catalog:"
   },
