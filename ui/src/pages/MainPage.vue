@@ -15,7 +15,8 @@ import {
   createAgGridColDef,
   makeRowNumberColDef,
 } from "@platforma-sdk/ui-vue";
-import { computed, reactive, shallowRef, watch } from "vue";
+import { plRefsEqual } from "@platforma-sdk/model";
+import { computed, reactive, shallowRef, watch, watchEffect } from "vue";
 import { useApp } from "../app";
 import { parseProgressString } from "../parseProgress";
 import type { SampleResult } from "../results";
@@ -23,6 +24,13 @@ import { sampleResults } from "../results";
 import SettingsPanel from "./SettingsPanel.vue";
 
 const app = useApp();
+
+watchEffect(() => {
+  const inputOption = app.model.outputs.inputOptions?.find(
+    (p) => app.model.data.input && plRefsEqual(p.ref, app.model.data.input),
+  );
+  app.model.data.defaultBlockLabel = inputOption?.label ?? "";
+});
 
 const data = reactive<{ settingsOpen: boolean }>({
   settingsOpen: app.model.outputs.started === false,

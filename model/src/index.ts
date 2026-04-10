@@ -1,12 +1,14 @@
 import type { InferOutputsType, PlRef } from "@platforma-sdk/model";
-import { BlockModel, isPColumnSpec, parseResourceMap } from "@platforma-sdk/model";
+import {
+  BlockModelV3,
+  DataModelBuilder,
+  isPColumnSpec,
+  parseResourceMap,
+} from "@platforma-sdk/model";
 
-export const ProgressPrefix = "[==PROGRESS==]";
-
-export const ProgressPattern =
-  /(?<stage>[^:]*):(?: *(?<progress>[0-9.]+)%)?(?: *ETA: *(?<eta>.+))?/;
-
-export type BlockArgs = {
+export type BlockData = {
+  defaultBlockLabel?: string;
+  customBlockLabel?: string;
   input?: PlRef;
   pattern?: string;
   minReadsPerConsensus?: number;
@@ -17,14 +19,36 @@ export type BlockArgs = {
   perProcessCPUs?: number;
 };
 
-export const model = BlockModel.create()
+export const ProgressPrefix = "[==PROGRESS==]";
 
-  .withArgs<BlockArgs>({
+export const ProgressPattern =
+  /(?<stage>[^:]*):(?: *(?<progress>[0-9.]+)%)?(?: *ETA: *(?<eta>.+))?/;
+
+// Legacy args type from V1/V2 — all fields were optional
+type LegacyArgs = {
+  input?: PlRef;
+  pattern?: string;
+  minReadsPerConsensus?: number;
+  errorBudget?: number;
+  maxIndels?: number;
+  autoR1OnlyAssembly?: boolean;
+  perProcessMemGB?: number;
+  perProcessCPUs?: number;
+};
+
+const dataModel = new DataModelBuilder()
+  .from<BlockData>("v1")
+  .upgradeLegacy<LegacyArgs, Record<string, never>>(({ args }) => ({
+    ...args,
+  }))
+  .init(() => ({
     minReadsPerConsensus: 2,
     errorBudget: 10,
     maxIndels: 1,
     autoR1OnlyAssembly: true,
-  })
+  }));
+
+export const platforma = BlockModelV3.create(dataModel)
 
   .retentiveOutput("inputOptions", (ctx) => {
     return ctx.resultPool.getOptions((v) => {
@@ -59,7 +83,7 @@ export const model = BlockModel.create()
   })
 
   .output("sampleLabels", (ctx): Record<string, string> | undefined => {
-    const inputRef = ctx.args.input;
+    const inputRef = ctx.data.input;
     if (inputRef === undefined) return undefined;
     const inputSpec = ctx.resultPool
       .getSpecs()
@@ -94,13 +118,37 @@ export const model = BlockModel.create()
 
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])
 
-  .argsValid(
-    (ctx) =>
-      ctx.args.input !== undefined && ctx.args.pattern !== undefined && ctx.args.pattern !== "",
-  )
+  .args((data) => {
+    if (!data.input) throw new Error("Input dataset is required");
+    if (!data.pattern) throw new Error("mitool parse pattern is required");
+    if (data.minReadsPerConsensus !== undefined && data.minReadsPerConsensus < 1)
+      throw new Error("Min reads per consensus must be at least 1");
+    if (data.errorBudget !== undefined && data.errorBudget < 0)
+      throw new Error("Error budget must be 0 or greater");
+    if (data.maxIndels !== undefined && data.maxIndels < 0)
+      throw new Error("Max indels must be 0 or greater");
+    if (data.perProcessMemGB !== undefined && data.perProcessMemGB < 1)
+      throw new Error("Memory per process must be at least 1 GB");
+    if (data.perProcessCPUs !== undefined && data.perProcessCPUs < 1)
+      throw new Error("CPUs per process must be at least 1");
+    return {
+      input: data.input,
+      pattern: data.pattern,
+      minReadsPerConsensus: data.minReadsPerConsensus,
+      errorBudget: data.errorBudget,
+      maxIndels: data.maxIndels,
+      autoR1OnlyAssembly: data.autoR1OnlyAssembly,
+      perProcessMemGB: data.perProcessMemGB,
+      perProcessCPUs: data.perProcessCPUs,
+      defaultBlockLabel: data.defaultBlockLabel ?? "",
+      customBlockLabel: data.customBlockLabel ?? "",
+    };
+  })
 
   .title(() => "Peptide Extraction")
 
+  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
+
   .done();
 
-export type BlockOutputs = InferOutputsType<typeof model>;
+export type BlockOutputs = InferOutputsType<typeof platforma>;
