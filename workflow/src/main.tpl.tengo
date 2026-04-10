@@ -38,6 +38,14 @@ defaultXsvCPUs := 2
 wf.body(func(args) {
 	blockId := wf.blockId().getDataAsJson()
 
+	traceLabel := args.customBlockLabel
+	if traceLabel == "" {
+		traceLabel = args.defaultBlockLabel
+	}
+	if traceLabel == "" {
+		traceLabel = "Peptide Extraction"
+	}
+
 	inputSpec := args.resolvedInput.spec
 	inputData := args.resolvedInput.data
 
@@ -118,7 +126,7 @@ wf.body(func(args) {
 				type: "milaboratories.peptide-extraction",
 				id: blockId,
 				importance: 20,
-				label: "Peptide Extraction"
+				label: traceLabel
 			}],
 
 			extra: {
@@ -191,7 +199,7 @@ wf.body(func(args) {
 				type: "milaboratories.peptide-extraction.aggregate",
 				id: blockId,
 				importance: 60,
-				label: "Peptide Aggregation"
+				label: traceLabel
 			}]
 		}
 	)
