@@ -133,13 +133,28 @@ wf.body(func(args) {
 		mem: "16GiB",
 		cpu: 2,
 		name: "perPeptideXsv",
-		path: ["tsv"]
+		path: ["propertiesTsv"]
+	}
+
+	compositionXsvOutput := {
+		type: "Xsv",
+		xsvType: "tsv",
+		settings: {
+			axes: [peptideKeyAxis, columnSpecs.aminoAcidAxisSpec],
+			columns: columnSpecs.columnsComposition,
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		},
+		mem: "16GiB",
+		cpu: 2,
+		name: "compositionXsv",
+		path: ["compositionTsv"]
 	}
 
 	aggregateResults := pframes.processColumn(
 		perSampleResults.output("peptideTableFile"),
 		aggregatePeptidesTpl,
-		[perPeptideXsvOutput],
+		[perPeptideXsvOutput, compositionXsvOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sampleId",
@@ -159,6 +174,7 @@ wf.body(func(args) {
 	peptidesPfBuilder := pframes.pFrameBuilder()
 	perSampleResults.addXsvOutputToBuilder(peptidesPfBuilder, "peptideTableXsv", "perSample/")
 	aggregateResults.addXsvOutputToBuilder(peptidesPfBuilder, "perPeptideXsv", "perPeptide/")
+	aggregateResults.addXsvOutputToBuilder(peptidesPfBuilder, "compositionXsv", "composition/")
 	peptidesPf := peptidesPfBuilder.build()
 
 	outputs := {
