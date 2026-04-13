@@ -4,20 +4,19 @@ import { useApp } from "../app";
 
 const app = useApp();
 
-const peptideTableSettings = usePlDataTableSettingsV2({
-  model: () => app.model.outputs.peptideTable,
+const qcTableSettings = usePlDataTableSettingsV2({
+  model: () => app.model.outputs.qcReportTable,
 });
 </script>
 
 <template>
-  <PlBlockPage title="Results">
+  <PlBlockPage title="QC Report Table">
     <PlAgDataTableV2
-      v-model="app.model.data.resultsTableState"
-      :settings="peptideTableSettings"
+      v-model="app.model.data.qcTableState"
+      :settings="qcTableSettings"
       show-columns-panel
-      show-export-button
       :loading-text="app.model.outputs.started ? 'Running' : undefined"
-      not-ready-text="Run the analysis to see results"
+      not-ready-text="Run the analysis to see QC results"
     />
   </PlBlockPage>
 </template>

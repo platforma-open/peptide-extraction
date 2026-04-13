@@ -5,6 +5,8 @@
 // 2. Cross-sample aggregation + Biopython (processColumn -> aggregate-peptides.tpl.tengo)
 
 wf := import("@platforma-sdk/workflow-tengo:workflow")
+render := import("@platforma-sdk/workflow-tengo:render")
+xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
@@ -13,6 +15,7 @@ times := import("times")
 
 mitoolPipelineTpl := assets.importTemplate(":mitool-pipeline")
 aggregatePeptidesTpl := assets.importTemplate(":aggregate-peptides")
+computeQcTpl := assets.importTemplate(":compute-qc")
 columnSpecs := import(":column-specs")
 
 wf.prepare(func(args) {
@@ -179,10 +182,26 @@ wf.body(func(args) {
 		path: ["compositionTsv"]
 	}
 
+	// Raw properties file (for QC step)
+	// @TODO: Check if there is a way to use perPeptideXsvOutput inside QC template
+	propertiesFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/propertiesFile",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "propertiesFile",
+		path: ["propertiesTsv"]
+	}
+
 	aggregateResults := pframes.processColumn(
 		perSampleResults.output("peptideTableFile"),
 		aggregatePeptidesTpl,
-		[perPeptideXsvOutput, compositionXsvOutput],
+		[perPeptideXsvOutput, compositionXsvOutput, propertiesFileOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sampleId",
@@ -204,6 +223,41 @@ wf.body(func(args) {
 		}
 	)
 
+	// Step 3: QC report table (joins per-sample peptide tables with per-peptide properties)
+	sampleIdAxisSpec := inputSpec.axesSpec[0]
+
+	qcRun := render.createEphemeral(computeQcTpl, {
+		peptideTablesData: perSampleResults.outputData("peptideTableFile"),
+		propertiesFile: aggregateResults.outputData("propertiesFile")
+	})
+
+	qcTsvFile := qcRun.output("qcTable")
+
+	qcColumns := xsv.importFile(
+		qcTsvFile,
+		"tsv",
+		{
+			axes: [{
+				column: "sampleId",
+				spec: sampleIdAxisSpec
+			}],
+			columns: columnSpecs.columnsQc,
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		},
+		{
+			splitDataAndSpec: true,
+			cpu: 1,
+			mem: string(defaultXsvMemGB) + "GiB"
+		}
+	)
+
+	qcPfBuilder := pframes.pFrameBuilder()
+	for k, v in qcColumns {
+		qcPfBuilder.add(k, v.spec, v.data)
+	}
+	qcPf := qcPfBuilder.build()
+
 	// Build pFrame from per-sample Xsv + aggregated Xsv (composition excluded — for future plots only)
 	peptidesPfBuilder := pframes.pFrameBuilder()
 	perSampleResults.addXsvOutputToBuilder(peptidesPfBuilder, "peptideTableXsv", "perSample/")
@@ -212,6 +266,7 @@ wf.body(func(args) {
 
 	outputs := {
 		peptides: pframes.exportFrame(peptidesPf),
+		qcReportTable: pframes.exportFrame(qcPf),
 		stepLogs: perSampleResults.outputData("stepLogs")
 	}
 

@@ -19,7 +19,8 @@ export type BlockData = {
   autoR1OnlyAssembly?: boolean;
   perProcessMemGB?: number;
   perProcessCPUs?: number;
-  tableState: PlDataTableStateV2;
+  qcTableState: PlDataTableStateV2;
+  resultsTableState: PlDataTableStateV2;
 };
 
 export const ProgressPrefix = "[==PROGRESS==]";
@@ -43,14 +44,16 @@ const dataModel = new DataModelBuilder()
   .from<BlockData>("v1")
   .upgradeLegacy<LegacyArgs, Record<string, never>>(({ args }) => ({
     ...args,
-    tableState: createPlDataTableStateV2(),
+    qcTableState: createPlDataTableStateV2(),
+    resultsTableState: createPlDataTableStateV2(),
   }))
   .init(() => ({
     minReadsPerConsensus: 2,
     errorBudget: 10,
     maxIndels: 1,
     autoR1OnlyAssembly: true,
-    tableState: createPlDataTableStateV2(),
+    qcTableState: createPlDataTableStateV2(),
+    resultsTableState: createPlDataTableStateV2(),
   }));
 
 export const platforma = BlockModelV3.create(dataModel)
@@ -126,11 +129,22 @@ export const platforma = BlockModelV3.create(dataModel)
     if (pCols === undefined) {
       return undefined;
     }
-    return createPlDataTableV2(ctx, pCols, ctx.data.tableState);
+    return createPlDataTableV2(ctx, pCols, ctx.data.resultsTableState);
+  })
+
+  .outputWithStatus("qcReportTable", (ctx) => {
+    const pCols = ctx.outputs
+      ?.resolve({ field: "qcReportTable", assertFieldType: "Input", allowPermanentAbsence: true })
+      ?.getPColumns();
+    if (pCols === undefined) {
+      return undefined;
+    }
+    return createPlDataTableV2(ctx, pCols, ctx.data.qcTableState);
   })
 
   .sections((_ctx) => [
     { type: "link", href: "/", label: "Main" },
+    { type: "link", href: "/qc", label: "QC Report Table" },
     { type: "link", href: "/results", label: "Results" },
   ])
 

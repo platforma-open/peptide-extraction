@@ -357,6 +357,92 @@ columnsComposition := [
 	}
 ]
 
+// --- QC columns (0 extra axes, sampleId comes from processColumn iteration) ---
+
+columnsQc := [
+	{
+		column: "totalReads",
+		id: "qc-total-reads",
+		spec: {
+			name: "pl7.app/peptide/qc/totalReads",
+			valueType: "Long",
+			annotations: a(50000, true, {
+				"pl7.app/label": "Total Reads"
+			})
+		}
+	},
+	{
+		column: "totalUMIs",
+		id: "qc-total-umis",
+		spec: {
+			name: "pl7.app/peptide/qc/totalUMIs",
+			valueType: "Long",
+			annotations: a(49900, true, {
+				"pl7.app/label": "Total UMIs"
+			})
+		}
+	},
+	{
+		column: "uniquePeptides",
+		id: "qc-unique-peptides",
+		spec: {
+			name: "pl7.app/peptide/qc/uniquePeptides",
+			valueType: "Int",
+			annotations: a(49800, true, {
+				"pl7.app/label": "Unique Peptides"
+			})
+		}
+	},
+	{
+		column: "avgLengthAa",
+		id: "qc-avg-length-aa",
+		spec: {
+			name: "pl7.app/peptide/qc/avgLengthAa",
+			valueType: "Double",
+			annotations: a(49700, true, {
+				"pl7.app/label": "Avg Peptide Length (aa)",
+				"pl7.app/format": ".1f"
+			})
+		}
+	},
+	{
+		column: "avgLengthNt",
+		id: "qc-avg-length-nt",
+		spec: {
+			name: "pl7.app/peptide/qc/avgLengthNt",
+			valueType: "Double",
+			annotations: a(49600, true, {
+				"pl7.app/label": "Avg Peptide Length (nt)",
+				"pl7.app/format": ".1f"
+			})
+		}
+	},
+	{
+		column: "hasTrailingNucleotides",
+		id: "qc-has-trailing-nt",
+		spec: {
+			name: "pl7.app/peptide/qc/hasTrailingNucleotides",
+			valueType: "Int",
+			annotations: a(49500, true, {
+				"pl7.app/label": "Trailing Nucleotides",
+				"pl7.app/description": "Number of peptides in this sample with a nucleotide sequence whose length is not divisible by 3, meaning extra bases were trimmed before translation."
+			})
+		}
+	},
+	{
+		column: "hasEarlyStopCodon",
+		id: "qc-has-early-stop",
+		spec: {
+			name: "pl7.app/peptide/qc/hasEarlyStopCodon",
+			valueType: "Int",
+			annotations: a(49400, true, {
+				"pl7.app/label": "Early Stop Codons",
+				"pl7.app/description": "Number of peptides in this sample containing an internal stop codon (TAA, TAG, or TGA) within the reading frame, causing the translated amino acid sequence to be shorter than expected."
+			})
+		}
+	}
+]
+
 // Schema for reading per-sample TSVs in the aggregation template
 perSampleSchema := func() {
 	schema := []
@@ -373,5 +459,6 @@ export {
 	columnsPerPeptideFromSample: columnsPerPeptideFromSample,
 	columnsAggregated: columnsAggregated,
 	columnsComposition: columnsComposition,
+	columnsQc: columnsQc,
 	perSampleSchema: perSampleSchema
 }
