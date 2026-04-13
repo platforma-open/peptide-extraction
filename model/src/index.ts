@@ -8,11 +8,26 @@ import {
   parseResourceMap,
 } from "@platforma-sdk/model";
 
+export type UmiRange = { min: number; max: number };
+
+export type PatternHalf = {
+  umi: UmiRange;
+  leftAnchor: string;
+  rightAnchor: string;
+  rightTrim?: number;
+};
+
+export type PatternParts = {
+  r1: PatternHalf;
+  r2?: PatternHalf;
+};
+
 export type BlockData = {
   defaultBlockLabel?: string;
   customBlockLabel?: string;
   input?: PlRef;
   pattern?: string;
+  patternParts?: PatternParts;
   minReadsPerConsensus?: number;
   errorBudget?: number;
   maxIndels?: number;
