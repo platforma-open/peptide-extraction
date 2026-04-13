@@ -204,11 +204,10 @@ wf.body(func(args) {
 		}
 	)
 
-	// Build pFrame from per-sample Xsv + aggregated Xsv
+	// Build pFrame from per-sample Xsv + aggregated Xsv (composition excluded — for future plots only)
 	peptidesPfBuilder := pframes.pFrameBuilder()
 	perSampleResults.addXsvOutputToBuilder(peptidesPfBuilder, "peptideTableXsv", "perSample/")
 	aggregateResults.addXsvOutputToBuilder(peptidesPfBuilder, "perPeptideXsv", "perPeptide/")
-	aggregateResults.addXsvOutputToBuilder(peptidesPfBuilder, "compositionXsv", "composition/")
 	peptidesPf := peptidesPfBuilder.build()
 
 	outputs := {

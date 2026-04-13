@@ -1,7 +1,9 @@
-import type { InferOutputsType, PlRef } from "@platforma-sdk/model";
+import type { InferOutputsType, PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
 import {
   BlockModelV3,
   DataModelBuilder,
+  createPlDataTableStateV2,
+  createPlDataTableV2,
   isPColumnSpec,
   parseResourceMap,
 } from "@platforma-sdk/model";
@@ -17,6 +19,7 @@ export type BlockData = {
   autoR1OnlyAssembly?: boolean;
   perProcessMemGB?: number;
   perProcessCPUs?: number;
+  tableState: PlDataTableStateV2;
 };
 
 export const ProgressPrefix = "[==PROGRESS==]";
@@ -40,12 +43,14 @@ const dataModel = new DataModelBuilder()
   .from<BlockData>("v1")
   .upgradeLegacy<LegacyArgs, Record<string, never>>(({ args }) => ({
     ...args,
+    tableState: createPlDataTableStateV2(),
   }))
   .init(() => ({
     minReadsPerConsensus: 2,
     errorBudget: 10,
     maxIndels: 1,
     autoR1OnlyAssembly: true,
+    tableState: createPlDataTableStateV2(),
   }));
 
 export const platforma = BlockModelV3.create(dataModel)
@@ -116,7 +121,18 @@ export const platforma = BlockModelV3.create(dataModel)
     ) as Record<string, string>;
   })
 
-  .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])
+  .outputWithStatus("peptideTable", (ctx) => {
+    const pCols = ctx.outputs?.resolve("peptides")?.getPColumns();
+    if (pCols === undefined) {
+      return undefined;
+    }
+    return createPlDataTableV2(ctx, pCols, ctx.data.tableState);
+  })
+
+  .sections((_ctx) => [
+    { type: "link", href: "/", label: "Main" },
+    { type: "link", href: "/results", label: "Results" },
+  ])
 
   .args((data) => {
     if (!data.input) throw new Error("Input dataset is required");
