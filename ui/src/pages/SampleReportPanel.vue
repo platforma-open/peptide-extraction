@@ -9,14 +9,12 @@ const sampleId = defineModel<string | undefined>();
 
 const app = useApp();
 
-type StepId = "1-parse" | "2-refine" | "3-sort" | "4-consensus" | "5-tagstat";
+type StepId = "1-parse" | "2-refine" | "4-consensus";
 
 const stepOptions: SimpleOption<StepId>[] = [
   { value: "1-parse", text: "Parse" },
   { value: "2-refine", text: "Refine" },
-  { value: "3-sort", text: "Sort" },
   { value: "4-consensus", text: "Consensus" },
-  { value: "5-tagstat", text: "Tag-stat" },
 ];
 
 const currentStep = ref<StepId>("1-parse");
