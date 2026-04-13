@@ -15,9 +15,9 @@ const app = useApp();
 const inputOptions = computed(() => app.model.outputs.inputOptions);
 
 const autoR1OnlyAssembly = computed({
-  get: () => app.model.args.autoR1OnlyAssembly ?? true,
+  get: () => app.model.data.autoR1OnlyAssembly ?? true,
   set: (value: boolean) => {
-    app.model.args.autoR1OnlyAssembly = value;
+    app.model.data.autoR1OnlyAssembly = value;
   },
 });
 </script>
@@ -25,23 +25,19 @@ const autoR1OnlyAssembly = computed({
 <template>
   <PlDropdownRef
     :options="inputOptions"
-    :model-value="app.model.args.input"
+    :model-value="app.model.data.input"
     label="Select dataset"
     clearable
-    @update:model-value="(v) => (app.model.args.input = v)"
+    @update:model-value="(v) => (app.model.data.input = v)"
   />
 
-  <PlTextField
-    v-model="app.model.args.pattern"
-    label="mitool parse pattern"
-    :clearable="() => undefined"
-  >
+  <PlTextField v-model="app.model.data.pattern" label="mitool parse pattern">
     <template #tooltip> Full mitool parse pattern including R1 and R2, separated by \ </template>
   </PlTextField>
 
   <PlAccordionSection label="Advanced settings">
     <PlNumberField
-      v-model="app.model.args.minReadsPerConsensus"
+      v-model="app.model.data.minReadsPerConsensus"
       label="Min reads per consensus"
       :min-value="1"
     >
@@ -51,12 +47,12 @@ const autoR1OnlyAssembly = computed({
       </template>
     </PlNumberField>
 
-    <PlNumberField v-model="app.model.args.errorBudget" label="Error budget" :min-value="0">
+    <PlNumberField v-model="app.model.data.errorBudget" label="Error budget" :min-value="0">
       <template #tooltip> Maximum mismatches and indels allowed during pattern matching. </template>
     </PlNumberField>
 
     <PlNumberField
-      v-model="app.model.args.maxIndels"
+      v-model="app.model.data.maxIndels"
       label="Max indels (UMI refinement)"
       :min-value="0"
     >
@@ -74,7 +70,7 @@ const autoR1OnlyAssembly = computed({
     </PlCheckbox>
 
     <PlNumberField
-      v-model="app.model.args.perProcessMemGB"
+      v-model="app.model.data.perProcessMemGB"
       label="Memory per sample process (GB)"
       :min-value="1"
       :clearable="true"
@@ -85,7 +81,7 @@ const autoR1OnlyAssembly = computed({
     </PlNumberField>
 
     <PlNumberField
-      v-model="app.model.args.perProcessCPUs"
+      v-model="app.model.data.perProcessCPUs"
       label="CPUs per sample process"
       :min-value="1"
       :clearable="true"

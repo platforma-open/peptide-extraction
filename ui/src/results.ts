@@ -63,6 +63,12 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
           progressStr = info.progressLine.replace(ProgressPrefix, "");
         }
       }
+      // Prepend step indicator to progress text (e.g. "[2/6] Correcting UMI: 60%")
+      const stepNum = info.step ? info.step.split("-")[0] : "";
+      if (stepNum && progressStr !== "Done" && progressStr !== "Queued") {
+        progressStr = `[${stepNum}/6] ${progressStr}`;
+      }
+
       return {
         sampleId,
         label: sampleLabels?.[sampleId] ?? sampleId,
