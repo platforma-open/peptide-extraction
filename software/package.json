@@ -27,7 +27,7 @@
       "peptide-properties": {
         "binary": {
           "artifact": "py-archive",
-          "cmd": [ "python", "{pkg}/peptide_properties_mock.py" ]
+          "cmd": [ "python", "{pkg}/peptide_properties.py" ]
         }
       }
     }
