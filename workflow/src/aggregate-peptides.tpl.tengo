@@ -15,7 +15,7 @@ units := import("@platforma-sdk/workflow-tengo:units")
 math := import("math")
 json := import("json")
 
-self.defineOutputs("propertiesTsv", "compositionTsv")
+self.defineOutputs("propertiesTsv")
 
 peptidePropertiesSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:peptide-properties")
 
@@ -95,17 +95,13 @@ self.body(func(inputs) {
 		mem(string(propertiesMemGB) + "GiB").
 		arg("aggregated.tsv").
 		arg("properties.tsv").
-		arg("composition.tsv").
 		addFile("aggregated.tsv", aggregatedTsv).
 		saveFile("properties.tsv").
-		saveFile("composition.tsv").
 		run()
 
 	mergedTsv := propsCmd.getFile("properties.tsv")
-	compositionTsv := propsCmd.getFile("composition.tsv")
 
 	return {
-		propertiesTsv: mergedTsv,
-		compositionTsv: compositionTsv
+		propertiesTsv: mergedTsv
 	}
 })

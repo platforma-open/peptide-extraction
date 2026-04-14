@@ -18,6 +18,8 @@ import { ClientSideRowModelModule, ModuleRegistry } from "ag-grid-enterprise";
 import { AgGridVue } from "ag-grid-vue3";
 import { computed, reactive, shallowRef, watch, watchEffect } from "vue";
 import { useApp } from "../app";
+import type { SampleComposition } from "../aaComposition";
+import AaCompositionHeatmapCell from "../components/AaCompositionHeatmapCell.vue";
 import { parseProgressString } from "../parseProgress";
 import type { SampleResult } from "../results";
 import { sampleResults } from "../results";
@@ -126,6 +128,19 @@ const columnDefs: ColDef<SampleResult>[] = [
         suffix: parsed.etaLabel ?? "",
       };
     },
+  }),
+  createAgGridColDef<SampleResult, SampleComposition | undefined>({
+    colId: "aaComposition",
+    headerName: "AA Composition",
+    headerComponentParams: { type: "Text" } satisfies PlAgHeaderComponentParams,
+    flex: 1,
+    cellStyle: {
+      "--ag-cell-horizontal-padding": "4px",
+    },
+    cellRendererSelector: (cellData) => ({
+      component: AaCompositionHeatmapCell,
+      params: { value: cellData.data?.aaComposition },
+    }),
   }),
 ];
 

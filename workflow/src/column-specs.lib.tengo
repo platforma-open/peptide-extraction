@@ -326,37 +326,6 @@ columnsAggregated := [
 	}
 ]
 
-// --- AA composition (2 axes: peptideKey, aminoAcid) ---
-
-aminoAcidAxisSpec := {
-	column: "aminoAcid",
-	spec: {
-		name: "pl7.app/peptide/aminoAcid",
-		type: "String",
-		annotations: {
-			"pl7.app/label": "Amino Acid"
-		}
-	}
-}
-
-columnsComposition := [
-	{
-		column: "peptideAaPercent",
-		id: "peptide-aa-percent",
-		allowNA: true,
-		spec: {
-			name: "pl7.app/peptide/aaPercent",
-			valueType: "Double",
-			annotations: a(69500, true, {
-				"pl7.app/min": "0",
-				"pl7.app/max": "100",
-				"pl7.app/label": "AA Percent",
-				"pl7.app/format": ".1f"
-			})
-		}
-	}
-]
-
 // --- QC columns (0 extra axes, sampleId comes from processColumn iteration) ---
 
 columnsQc := [
@@ -454,11 +423,9 @@ perSampleSchema := func() {
 
 export {
 	peptideKeyAxisSpec: peptideKeyAxisSpec,
-	aminoAcidAxisSpec: aminoAcidAxisSpec,
 	columnsPerSample: columnsPerSample,
 	columnsPerPeptideFromSample: columnsPerPeptideFromSample,
 	columnsAggregated: columnsAggregated,
-	columnsComposition: columnsComposition,
 	columnsQc: columnsQc,
 	perSampleSchema: perSampleSchema
 }
