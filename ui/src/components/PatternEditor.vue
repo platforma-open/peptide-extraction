@@ -324,7 +324,7 @@ const previewSegments = computed((): Segment[] => {
   const half1 = fieldsToHalf(r1);
   if (!half1) return [];
 
-  const useWildcards = isGenerateMode.value && (app.model.data.r2UseWildcards ?? true);
+  const useWildcards = app.model.data.r2UseWildcards ?? true;
   const { min: r1min, max: r1max } = half1.umi;
   const r1UmiRange = r1min === r1max ? `${r1min}` : `${r1min}:${r1max}`;
   const r1Trim = half1.rightTrim !== undefined ? `>{${half1.rightTrim}}` : "";
@@ -433,7 +433,6 @@ const previewSegments = computed((): Segment[] => {
       >
     </div>
     <PlCheckbox
-      v-if="isGenerateMode && autoR2"
       :model-value="app.model.data.r2UseWildcards ?? true"
       :disabled="fieldsDisabled"
       @update:model-value="(v) => (app.model.data.r2UseWildcards = v)"
@@ -495,8 +494,7 @@ const previewSegments = computed((): Segment[] => {
           v-model="r2.umiMin"
           label="UMI min length"
           :min-value="1"
-          :clearable="true"
-          :required="r2HasAnyContent"
+          :required="true"
           :error-message="r2Errors.umi ?? undefined"
           :disabled="fieldsDisabled"
         />
@@ -512,6 +510,7 @@ const previewSegments = computed((): Segment[] => {
         :model-value="r2.leftAnchor"
         label="Left anchor"
         placeholder="e.g. tgagtttttgttctgcggcc"
+        :required="true"
         :error="r2Errors.leftAnchor ?? undefined"
         :disabled="fieldsDisabled"
         @update:model-value="(v) => (r2.leftAnchor = v || undefined)"
@@ -520,6 +519,7 @@ const previewSegments = computed((): Segment[] => {
         :model-value="r2.rightAnchor"
         label="Right anchor"
         placeholder="e.g. ggccatggccgcatagaaagg"
+        :required="true"
         :error="r2Errors.rightAnchor ?? undefined"
         :disabled="fieldsDisabled"
         @update:model-value="(v) => (r2.rightAnchor = v || undefined)"

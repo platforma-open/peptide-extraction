@@ -64,9 +64,9 @@ export function reverseComplement(seq: string): string {
 /**
  * Auto-generate an R2 half from R1:
  * - UMI range copied as-is
- * - leftAnchor  = reverse-complement of R1 rightAnchor  (no trim on R2 left)
+ * - leftAnchor  = reverse-complement of R1 rightAnchor
  * - rightAnchor = reverse-complement of R1 leftAnchor
- * - rightTrim   = R1 leftAnchor length - 1  (or undefined when leftAnchor is empty)
+ * - rightTrim   = 5 if rightAnchor length > 5, otherwise undefined
  */
 export function generateR2fromR1(r1: PatternHalf): PatternHalf {
   const leftAnchor = reverseComplement(r1.rightAnchor);
@@ -101,7 +101,7 @@ export function detectHomopolymers(seq: string): HomopolymerRun[] {
   return runs;
 }
 
-/** Replace all homopolymer runs (3+) in seq with an equal number of 'n'. */
+/** Replace all homopolymer runs (5+, non-terminal) in seq with an equal number of 'n'. */
 export function applyWildcards(seq: string): string {
   const runs = detectHomopolymers(seq);
   if (runs.length === 0) return seq;
