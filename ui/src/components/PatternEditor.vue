@@ -117,7 +117,8 @@ function fieldsToHalf(f: HalfFields): PatternHalf | null {
   if (validateUmiRange(umi)) return null;
   if (validateAnchor(leftAnchor)) return null;
   const rightAnchor = f.rightAnchor?.trim() ?? "";
-  if (rightAnchor && validateAnchor(rightAnchor)) return null;
+  if (!rightAnchor) return null;
+  if (validateAnchor(rightAnchor)) return null;
   if (f.rightTrim !== undefined && rightAnchor && validateTrim(f.rightTrim, rightAnchor))
     return null;
   return {

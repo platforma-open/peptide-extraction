@@ -22,7 +22,7 @@ export type PatternParts = {
 // as a read group only when name.drop(1).toIntOrNull() != null.
 // Groups: 1=umiName, 2=umiMin, 3=umiMax(or empty), 4=leftAnchor, 5=readName, 6=rightAnchor, 7=trim(or empty)
 const HALF_RE =
-  /^\^\(([A-Za-z][A-Za-z0-9]*):N\{(\d+)(?::(\d+))?\}\)([A-Za-z]*)\(([Rr]\d+):\*\)([A-Za-z]*)(?:>\{(\d+)\})?\*$/;
+  /^\^\(([A-Za-z][A-Za-z0-9]*):N\{(\d+)(?::(\d+))?\}\)([A-Za-z]+)\(([Rr]\d+):\*\)([A-Za-z]+)(?:>\{(\d+)\})?\*$/;
 
 function parseHalf(s: string): PatternHalf | null {
   const m = HALF_RE.exec(s.trim());
