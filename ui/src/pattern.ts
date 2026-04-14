@@ -40,6 +40,10 @@ const COMPLEMENT: Record<string, string> = {
   Y: "R",
   W: "W",
   S: "S",
+  B: "V",
+  V: "B",
+  D: "H",
+  H: "D",
   N: "N",
   m: "k",
   k: "m",
@@ -47,6 +51,10 @@ const COMPLEMENT: Record<string, string> = {
   y: "r",
   w: "w",
   s: "s",
+  b: "v",
+  v: "b",
+  d: "h",
+  h: "d",
   n: "n",
 };
 
@@ -120,10 +128,10 @@ export function detectMismatches(actual: string, expected: string): MismatchPosi
 
 // ─── Per-field validators ─────────────────────────────────────────────────────
 
-const DNA_IUPAC_RE = /^[ACGTacgtMKRYWSNmkrywsn]*$/;
+const DNA_IUPAC_RE = /^[ACGTacgtMKRYWSBDHVNmkrywsbdhvn]*$/;
 
 export function validateAnchor(value: string): string | null {
-  if (!DNA_IUPAC_RE.test(value)) return "Only DNA/IUPAC characters allowed (A C G T M K R Y W S N)";
+  if (!DNA_IUPAC_RE.test(value)) return "Only DNA/IUPAC characters allowed (A C G T M K R Y W S B D H V N)";
   return null;
 }
 
