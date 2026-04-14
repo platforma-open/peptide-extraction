@@ -6,15 +6,17 @@ import { computed, ref } from "vue";
 import { useApp } from "../app";
 import { sampleResults } from "../results";
 import AaCompositionChart from "../components/AaCompositionChart.vue";
+import QcSection from "../components/QcSection.vue";
 
 const sampleId = defineModel<string | undefined>();
 
 const app = useApp();
 
 // Top-level tabs
-type TabId = "visualReport" | "logs";
+type TabId = "visualReport" | "qualityChecks" | "logs";
 const tabOptions: SimpleOption<TabId>[] = [
   { value: "visualReport", text: "Visual Report" },
+  { value: "qualityChecks", text: "Quality Checks" },
   { value: "logs", text: "Logs" },
 ];
 const currentTab = ref<TabId>("visualReport");
@@ -35,9 +37,9 @@ const logHandle = computed((): AnyLogHandle | undefined => {
     ?.value;
 });
 
-const currentComposition = computed(() => {
+const currentSample = computed(() => {
   if (sampleId.value === undefined) return undefined;
-  return sampleResults.value?.find((s) => s.sampleId === sampleId.value)?.aaComposition;
+  return sampleResults.value?.find((s) => s.sampleId === sampleId.value);
 });
 </script>
 
@@ -45,7 +47,16 @@ const currentComposition = computed(() => {
   <PlBtnGroup v-model="currentTab" :options="tabOptions" />
 
   <template v-if="currentTab === 'visualReport'">
-    <AaCompositionChart :composition="currentComposition" />
+    <AaCompositionChart :composition="currentSample?.aaComposition" />
+  </template>
+
+  <template v-if="currentTab === 'qualityChecks'">
+    <div v-if="currentSample?.qcChecks?.length" style="padding-top: 8px">
+      <QcSection v-for="check in currentSample.qcChecks" :key="check.checkType" :value="check" />
+    </div>
+    <div v-else style="padding: 24px; color: var(--color-txt-03); font-size: 14px">
+      No quality checks available
+    </div>
   </template>
 
   <template v-if="currentTab === 'logs'">

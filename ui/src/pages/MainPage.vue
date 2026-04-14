@@ -3,6 +3,7 @@ import { plRefsEqual } from "@platforma-sdk/model";
 import type { PlAgHeaderComponentParams } from "@platforma-sdk/ui-vue";
 import {
   AgGridTheme,
+  PlAgCellStatusTag,
   PlAgOverlayLoading,
   PlAgOverlayNoRows,
   PlBlockPage,
@@ -21,6 +22,8 @@ import { useApp } from "../app";
 import type { SampleComposition } from "../aaComposition";
 import AaCompositionHeatmapCell from "../components/AaCompositionHeatmapCell.vue";
 import { parseProgressString } from "../parseProgress";
+import type { QcStatus } from "../qcChecks";
+import { worstStatus } from "../qcChecks";
 import type { SampleResult } from "../results";
 import { sampleResults } from "../results";
 import SampleReportPanel from "./SampleReportPanel.vue";
@@ -126,6 +129,20 @@ const columnDefs: ColDef<SampleResult>[] = [
         percent: parsed.percentage,
         text: percentText,
         suffix: parsed.etaLabel ?? "",
+      };
+    },
+  }),
+  createAgGridColDef<SampleResult, QcStatus | undefined>({
+    colId: "quality",
+    headerName: "Quality",
+    headerComponentParams: { type: "Text" } satisfies PlAgHeaderComponentParams,
+    width: 126,
+    cellRendererSelector: (cellData) => {
+      const checks = cellData.data?.qcChecks;
+      const status = checks?.length ? worstStatus(checks) : undefined;
+      return {
+        component: PlAgCellStatusTag,
+        params: { type: status },
       };
     },
   }),

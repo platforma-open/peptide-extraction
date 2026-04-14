@@ -15,6 +15,7 @@ json := import("json")
 self.awaitState("InputsLocked")
 self.awaitState("propertiesFile", "ResourceReady")
 self.awaitState("peptideTablesData", "ResourceReady")
+self.awaitState("qcChecksData", "ResourceReady")
 
 aminoAcids := ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L",
 	"M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
@@ -138,12 +139,46 @@ self.body(func(inputs) {
 		allComp = pt.concat(compFrames)
 	}
 
-	allQc.save("qc.tsv")
-	allComp.save("aa-composition.ndjson")
+	// Merge per-sample QC checks (NDJSON files from the Python qc_checks script)
+	qcChecksData := inputs.qcChecksData
+	qcChecksMap := qcChecksData.inputs()
+	qcChecksFrames := []
+	for sKey in maps.getKeys(qcChecksMap) {
+		qcFile := qcChecksMap[sKey]
+		key := json.decode(sKey)
+		sampleId := key[0]
+
+		qcDf := wf.frame({
+			file: qcFile,
+			xsvType: "ndjson"
+		}, {
+			id: "qcChecks_" + sampleId
+		})
+
+		// Add sampleId column
+		qcDf = qcDf.withColumns(pt.lit(sampleId).alias("sampleId"))
+		qcChecksFrames = append(qcChecksFrames, qcDf)
+	}
+
+	// Sort all outputs by sampleId for deterministic file content (stable CIDs across re-runs)
+	allQc.sort(["sampleId"]).save("qc.tsv")
+	allComp.sort(["sampleId"]).save("aa-composition.ndjson")
+
+	if len(qcChecksFrames) > 0 {
+		allQcChecks := undefined
+		if len(qcChecksFrames) == 1 {
+			allQcChecks = qcChecksFrames[0]
+		} else {
+			allQcChecks = pt.concat(qcChecksFrames)
+		}
+		allQcChecks.sort(["sampleId", "checkType"]).save("qc-checks.ndjson")
+	}
+
 	result := wf.run()
 
 	return {
 		qcTable: result.getFile("qc.tsv"),
-		aaComposition: result.getFile("aa-composition.ndjson")
+		aaComposition: result.getFile("aa-composition.ndjson"),
+		qcChecks: result.getFile("qc-checks.ndjson")
 	}
 })

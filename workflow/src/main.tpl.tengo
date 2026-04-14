@@ -104,10 +104,24 @@ wf.body(func(args) {
 		name: "stepLogs"
 	}
 
+	qcChecksFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/qcChecksFile",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "qcChecksFile",
+		path: ["qcChecks"]
+	}
+
 	perSampleResults := pframes.processColumn(
 		{ spec: inputSpec, data: inputData },
 		mitoolPipelineTpl,
-		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput],
+		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput, qcChecksFileOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sequencing/lane",
@@ -214,11 +228,13 @@ wf.body(func(args) {
 
 	qcRun := render.createEphemeral(computeQcTpl, {
 		peptideTablesData: perSampleResults.outputData("peptideTableFile"),
-		propertiesFile: aggregateResults.outputData("propertiesFile")
+		propertiesFile: aggregateResults.outputData("propertiesFile"),
+		qcChecksData: perSampleResults.outputData("qcChecksFile")
 	})
 
 	qcTsvFile := qcRun.output("qcTable")
 	aaCompositionFile := qcRun.output("aaComposition")
+	qcChecksFile := qcRun.output("qcChecks")
 
 	qcColumns := xsv.importFile(
 		qcTsvFile,
@@ -255,7 +271,8 @@ wf.body(func(args) {
 		peptides: pframes.exportFrame(peptidesPf),
 		qcReportTable: pframes.exportFrame(qcPf),
 		stepLogs: perSampleResults.outputData("stepLogs"),
-		aaComposition: file.exportFile(aaCompositionFile)
+		aaComposition: file.exportFile(aaCompositionFile),
+		qcChecks: file.exportFile(qcChecksFile)
 	}
 
 	exports := {

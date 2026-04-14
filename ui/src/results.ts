@@ -4,6 +4,8 @@ import { computed } from "vue";
 import type { SampleComposition } from "./aaComposition";
 import { parseCompositionNdjson } from "./aaComposition";
 import { useApp } from "./app";
+import type { QcCheckResult } from "./qcChecks";
+import { parseQcChecksNdjson } from "./qcChecks";
 
 const reactiveFileContent = ReactiveFileContent.useGlobal();
 
@@ -12,6 +14,7 @@ export type SampleResult = {
   label: string;
   progress: string;
   aaComposition?: SampleComposition;
+  qcChecks?: QcCheckResult[];
 };
 
 /** Per-sample AA composition, parsed once and cached until the file changes */
@@ -22,6 +25,14 @@ const compositionMap = computed<Map<string, SampleComposition> | undefined>(() =
     ? reactiveFileContent.getContentString(compositionBlob.handle)?.value
     : undefined;
   return content ? parseCompositionNdjson(content) : undefined;
+});
+
+/** Per-sample QC checks, parsed once and cached until the file changes */
+const qcChecksMap = computed<Map<string, QcCheckResult[]> | undefined>(() => {
+  const app = useApp();
+  const qcBlob = app.model.outputs.qcChecks;
+  const content = qcBlob ? reactiveFileContent.getContentString(qcBlob.handle)?.value : undefined;
+  return content ? parseQcChecksNdjson(content) : undefined;
 });
 
 export const sampleResults = computed<SampleResult[] | undefined>(() => {
@@ -90,6 +101,7 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
         label: sampleLabels?.[sampleId] ?? sampleId,
         progress: progressStr,
         aaComposition: compositionMap.value?.get(sampleId),
+        qcChecks: qcChecksMap.value?.get(sampleId),
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));

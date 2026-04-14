@@ -15,9 +15,10 @@ units := import("@platforma-sdk/workflow-tengo:units")
 
 json := import("json")
 
-self.defineOutputs("tsv", "stepLogs")
+self.defineOutputs("tsv", "stepLogs", "qcChecks")
 
 mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
+qcChecksSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:qc-checks")
 
 progressPrefix := "[==PROGRESS==]"
 
@@ -130,8 +131,10 @@ self.body(func(inputs) {
 	for f in R2Files { parseCmd = parseCmd.addFile(f.name, f.file) }
 
 	parseCmd = parseCmd.
+		arg("--report").arg("parse_report.txt").
 		arg("parsed.mic").
 		saveFile("parsed.mic").
+		saveFile("parse_report.txt").
 		run()
 
 	parsedMic := parseCmd.getFile("parsed.mic")
@@ -152,10 +155,12 @@ self.body(func(inputs) {
 		arg("-t").arg("UMI2").
 		arg("--substitution-rate").arg("0.00001").
 		arg("--max-indels").arg(string(maxIndels)).
+		arg("--report").arg("refine_report.txt").
 		addFile("parsed.mic", parsedMic).
 		arg("parsed.mic").
 		arg("refined.mic").
 		saveFile("refined.mic").
+		saveFile("refine_report.txt").
 		run()
 
 	refinedMic := refineCmd.getFile("refined.mic")
@@ -307,8 +312,31 @@ self.body(func(inputs) {
 	stepLogs.add(["4-consensus"], consensusCmd.getStdoutStream())
 	stepLogs.add(["5-tagstat"], tagStatCmd.getStdoutStream())
 
+	// =========================================================================
+	// Step 7: Extract QC checks from mitool reports
+	// =========================================================================
+
+	parseReport := parseCmd.getFile("parse_report.txt")
+	refineReport := refineCmd.getFile("refine_report.txt")
+	consensusReport := consensusCmd.getFile("consensus_report.txt")
+
+	qcChecksCmd := exec.builder().
+		software(qcChecksSw).
+		cpu(1).
+		mem("512MiB").
+		arg("parse_report.txt").
+		arg("refine_report.txt").
+		arg("consensus_report.txt").
+		arg("qc_checks.ndjson").
+		addFile("parse_report.txt", parseReport).
+		addFile("refine_report.txt", refineReport).
+		addFile("consensus_report.txt", consensusReport).
+		saveFile("qc_checks.ndjson").
+		run()
+
 	return {
 		tsv: peptidesTsv,
-		stepLogs: stepLogs.build()
+		stepLogs: stepLogs.build(),
+		qcChecks: qcChecksCmd.getFile("qc_checks.ndjson")
 	}
 })
