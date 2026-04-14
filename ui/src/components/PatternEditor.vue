@@ -13,6 +13,7 @@ import type {
 } from "@platforma-open/milaboratories.peptide-extraction.model";
 import { computed, reactive, ref, watch } from "vue";
 import { useApp } from "../app";
+import type { HomopolymerRun } from "../pattern";
 import {
   assemblePattern,
   detectHomopolymers,
@@ -128,7 +129,6 @@ function fieldsToHalf(f: HalfFields): PatternHalf | null {
     readName: f.readName,
   };
 }
-
 function halfEquals(a: PatternHalf, b: PatternHalf): boolean {
   return (
     a.umi.min === b.umi.min &&
@@ -173,13 +173,14 @@ watch(
     setFieldsFromHalf(r1, parsed.r1);
 
     if (parsed.r2) {
-      const computedAuto = generateR2fromR1(parsed.r1);
-      if (halfEquals(parsed.r2, computedAuto)) {
-        app.model.data.r2Mode = "generate";
-        // r2Fields updated by generate-mode watcher below
-      } else {
-        app.model.data.r2Mode = "manual";
-        setFieldsFromHalf(r2, parsed.r2);
+      setFieldsFromHalf(r2, parsed.r2);
+      // One-way switch: generate → manual if R2 no longer matches auto-generated.
+      // Never switch back to generate automatically.
+      if (app.model.data.r2Mode !== "manual") {
+        const computedAuto = generateR2fromR1(parsed.r1);
+        if (!halfEquals(parsed.r2, computedAuto)) {
+          app.model.data.r2Mode = "manual";
+        }
       }
     } else {
       clearHalf(r2);
@@ -263,59 +264,34 @@ function handleModeChange(newMode: R2Mode) {
 type SegmentHl = "homopolymer" | "mismatch";
 type Segment = { text: string; hl?: SegmentHl };
 
-function buildAnchorSegments(anchor: string, refAnchor: string, isAutoGen: boolean): Segment[] {
-  if (!anchor) return [];
-  if (isAutoGen) {
-    const runs = detectHomopolymers(anchor);
-    if (!runs.length) return [{ text: anchor }];
-    const segs: Segment[] = [];
-    let pos = 0;
-    for (const { start, end } of runs) {
-      if (pos < start) segs.push({ text: anchor.slice(pos, start) });
-      segs.push({ text: anchor.slice(start, end), hl: "homopolymer" });
-      pos = end;
-    }
-    if (pos < anchor.length) segs.push({ text: anchor.slice(pos) });
-    return segs;
-  } else {
-    const mismatches = detectMismatches(anchor, refAnchor);
-    if (!mismatches.length) return [{ text: anchor }];
-    const mismatchSet = new Set(mismatches.map((m) => m.index));
-    const segs: Segment[] = [];
-    let i = 0;
-    while (i < anchor.length) {
-      if (mismatchSet.has(i)) {
-        let j = i + 1;
-        while (j < anchor.length && mismatchSet.has(j)) j++;
-        segs.push({ text: anchor.slice(i, j), hl: "mismatch" });
-        i = j;
-      } else {
-        let j = i + 1;
-        while (j < anchor.length && !mismatchSet.has(j)) j++;
-        segs.push({ text: anchor.slice(i, j) });
-        i = j;
-      }
-    }
-    return segs;
+/**
+ * Build highlight segments for an anchor string.
+ * Homopolymer runs and mismatch indices can be provided simultaneously.
+ * Homopolymer takes priority over mismatch on the same character.
+ */
+function buildAnchorSegments(
+  text: string,
+  homoRuns: HomopolymerRun[],
+  mismatchIndices: Set<number>,
+): Segment[] {
+  if (!text) return [];
+  // Build per-character highlight map. Set mismatches first, then overwrite with homopolymers.
+  const hl = Array.from<SegmentHl | undefined>({ length: text.length });
+  for (const i of mismatchIndices) {
+    if (i < text.length) hl[i] = "mismatch";
   }
-}
-
-function buildSegmentsFromMismatches(text: string, indices: Set<number>): Segment[] {
-  if (!text || !indices.size) return [{ text }];
+  for (const { start, end } of homoRuns) {
+    for (let i = start; i < end; i++) hl[i] = "homopolymer";
+  }
+  // Group consecutive characters with the same highlight into segments
   const segs: Segment[] = [];
   let i = 0;
   while (i < text.length) {
-    if (indices.has(i)) {
-      let j = i + 1;
-      while (j < text.length && indices.has(j)) j++;
-      segs.push({ text: text.slice(i, j), hl: "mismatch" });
-      i = j;
-    } else {
-      let j = i + 1;
-      while (j < text.length && !indices.has(j)) j++;
-      segs.push({ text: text.slice(i, j) });
-      i = j;
-    }
+    const h = hl[i];
+    let j = i + 1;
+    while (j < text.length && hl[j] === h) j++;
+    segs.push({ text: text.slice(i, j), hl: h });
+    i = j;
   }
   return segs;
 }
@@ -337,74 +313,59 @@ const previewSegments = computed((): Segment[] => {
     half2 = r2HasAnyContent.value ? fieldsToHalf(r2) : null;
   }
 
-  let r1LeftSegs: Segment[];
-  let r1RightSegs: Segment[];
-  let r2LeftSegs: Segment[] | null = null;
-  let r2RightSegs: Segment[] | null = null;
-  let r2UmiRange = "";
-  let r2Trim = "";
-
-  if (useWildcards) {
-    // Generate mode + wildcards on: homopolymer highlights on both sides
-    r1LeftSegs = buildAnchorSegments(half1.leftAnchor, "", true);
-    r1RightSegs = buildAnchorSegments(half1.rightAnchor, "", true);
-    if (half2) {
-      r2LeftSegs = buildAnchorSegments(half2.leftAnchor, "", true);
-      r2RightSegs = buildAnchorSegments(half2.rightAnchor, "", true);
-    }
-  } else if (!isGenerateMode.value && half2) {
-    // Manual mode: compute R2 mismatches vs autoR2, then mirror to R1
+  // Mismatch indices (manual mode only, mirrored to R1)
+  let r2LeftMismatch = new Set<number>();
+  let r2RightMismatch = new Set<number>();
+  let r1LeftMirror = new Set<number>();
+  let r1RightMirror = new Set<number>();
+  if (!isGenerateMode.value && half2) {
     const refAuto = autoR2.value;
-    const r2LeftIdx = new Set(
+    r2LeftMismatch = new Set(
       detectMismatches(half2.leftAnchor, refAuto?.leftAnchor ?? "").map((m) => m.index),
     );
-    const r2RightIdx = new Set(
+    r2RightMismatch = new Set(
       detectMismatches(half2.rightAnchor, refAuto?.rightAnchor ?? "").map((m) => m.index),
     );
     // R2 left = RC(R1 right): mirror indices are reversed
     const r1RightLen = half1.rightAnchor.length;
-    const r1RightIdx = new Set([...r2LeftIdx].map((i) => r1RightLen - 1 - i).filter((i) => i >= 0));
+    r1RightMirror = new Set(
+      [...r2LeftMismatch].map((i) => r1RightLen - 1 - i).filter((i) => i >= 0),
+    );
     // R2 right = RC(R1 left): mirror indices are reversed
     const r1LeftLen = half1.leftAnchor.length;
-    const r1LeftIdx = new Set([...r2RightIdx].map((i) => r1LeftLen - 1 - i).filter((i) => i >= 0));
-
-    r1LeftSegs = buildSegmentsFromMismatches(half1.leftAnchor, r1LeftIdx);
-    r1RightSegs = buildSegmentsFromMismatches(half1.rightAnchor, r1RightIdx);
-    r2LeftSegs = buildSegmentsFromMismatches(half2.leftAnchor, r2LeftIdx);
-    r2RightSegs = buildSegmentsFromMismatches(half2.rightAnchor, r2RightIdx);
-  } else {
-    // Generate mode, wildcards off: plain
-    r1LeftSegs = [{ text: half1.leftAnchor }];
-    r1RightSegs = [{ text: half1.rightAnchor }];
-    if (half2) {
-      r2LeftSegs = [{ text: half2.leftAnchor }];
-      r2RightSegs = [{ text: half2.rightAnchor }];
-    }
+    r1LeftMirror = new Set(
+      [...r2RightMismatch].map((i) => r1LeftLen - 1 - i).filter((i) => i >= 0),
+    );
   }
 
-  if (half2) {
-    const { min: r2min, max: r2max } = half2.umi;
-    r2UmiRange = r2min === r2max ? `${r2min}` : `${r2min}:${r2max}`;
-    r2Trim = half2.rightTrim !== undefined ? `>{${half2.rightTrim}}` : "";
-  }
+  // Homopolymer runs (when wildcards enabled)
+  const empty: HomopolymerRun[] = [];
+  const r1LeftHomo = useWildcards ? detectHomopolymers(half1.leftAnchor) : empty;
+  const r1RightHomo = useWildcards ? detectHomopolymers(half1.rightAnchor) : empty;
 
   const r1Part: Segment[] = [
     { text: `^(${half1.umiName ?? "UMI"}:N{${r1UmiRange}})` },
-    ...r1LeftSegs,
+    ...buildAnchorSegments(half1.leftAnchor, r1LeftHomo, r1LeftMirror),
     { text: `(${half1.readName ?? "R1"}:*)` },
-    ...r1RightSegs,
+    ...buildAnchorSegments(half1.rightAnchor, r1RightHomo, r1RightMirror),
     { text: `${r1Trim}*` },
   ];
 
-  if (!half2 || !r2LeftSegs || !r2RightSegs) return r1Part;
+  if (!half2) return r1Part;
+
+  const r2LeftHomo = useWildcards ? detectHomopolymers(half2.leftAnchor) : empty;
+  const r2RightHomo = useWildcards ? detectHomopolymers(half2.rightAnchor) : empty;
+  const { min: r2min, max: r2max } = half2.umi;
+  const r2UmiRange = r2min === r2max ? `${r2min}` : `${r2min}:${r2max}`;
+  const r2Trim = half2.rightTrim !== undefined ? `>{${half2.rightTrim}}` : "";
 
   return [
     ...r1Part,
     { text: "\\" },
     { text: `^(${half2.umiName ?? "UMI2"}:N{${r2UmiRange}})` },
-    ...r2LeftSegs,
+    ...buildAnchorSegments(half2.leftAnchor, r2LeftHomo, r2LeftMismatch),
     { text: `(${half2.readName ?? "R2"}:*)` },
-    ...r2RightSegs,
+    ...buildAnchorSegments(half2.rightAnchor, r2RightHomo, r2RightMismatch),
     { text: `${r2Trim}*` },
   ];
 });
