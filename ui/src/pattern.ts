@@ -131,7 +131,8 @@ export function detectMismatches(actual: string, expected: string): MismatchPosi
 const DNA_IUPAC_RE = /^[ACGTacgtMKRYWSBDHVNmkrywsbdhvn]*$/;
 
 export function validateAnchor(value: string): string | null {
-  if (!DNA_IUPAC_RE.test(value)) return "Only DNA/IUPAC characters allowed (A C G T M K R Y W S B D H V N)";
+  if (!DNA_IUPAC_RE.test(value))
+    return "Only DNA/IUPAC characters allowed (A C G T M K R Y W S B D H V N)";
   return null;
 }
 
