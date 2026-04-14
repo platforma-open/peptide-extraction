@@ -3,49 +3,14 @@ import type {
   PatternParts,
   UmiRange,
 } from "@platforma-open/milaboratories.peptide-extraction.model";
-
-// ─── Parse ────────────────────────────────────────────────────────────────────
-
-// Matches one half of a mitool parse pattern:
-//   ^(UMI:N{min:max})<leftAnchor>(R1:*)<rightAnchor>>{trim}*
-//   or the same with UMI2 / R2 for the second half
-//
-// Groups: 1=umiMin, 2=umiMax(or empty), 3=leftAnchor, 4=rightAnchor, 5=trim(or empty)
-const HALF_RE =
-  /^\^\(UMI2?:N\{(\d+)(?::(\d+))?\}\)([A-Za-z]*)\(R[12]:\*\)([A-Za-z]*)(?:>\{(\d+)\})?\*$/;
-
-function parseHalf(s: string): PatternHalf | null {
-  const m = HALF_RE.exec(s.trim());
-  if (!m) return null;
-  const min = parseInt(m[1], 10);
-  const max = m[2] !== undefined && m[2] !== "" ? parseInt(m[2], 10) : min;
-  return {
-    umi: { min, max },
-    leftAnchor: m[3] ?? "",
-    rightAnchor: m[4] ?? "",
-    rightTrim: m[5] !== undefined && m[5] !== "" ? parseInt(m[5], 10) : undefined,
-  };
-}
-
-/** Parse a full pattern string into parts, or return null if unparseable. */
-export function parsePattern(str: string): PatternParts | null {
-  const sep = str.indexOf("\\");
-  if (sep === -1) {
-    const r1 = parseHalf(str);
-    return r1 ? { r1 } : null;
-  }
-  const r1 = parseHalf(str.slice(0, sep));
-  const r2 = parseHalf(str.slice(sep + 1));
-  if (!r1 || !r2) return null;
-  return { r1, r2 };
-}
+export { parsePattern } from "@platforma-open/milaboratories.peptide-extraction.model";
 
 // ─── Assemble ─────────────────────────────────────────────────────────────────
 
-function assembleHalf(h: PatternHalf, index: 1 | 2): string {
+function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
   const { min, max } = h.umi;
-  const umiLabel = index === 2 ? "UMI2" : "UMI";
-  const readLabel = index === 2 ? "R2" : "R1";
+  const umiLabel = h.umiName ?? (defaultIndex === 2 ? "UMI2" : "UMI");
+  const readLabel = h.readName ?? (defaultIndex === 2 ? "R2" : "R1");
   const umiRange = min === max ? `${min}` : `${min}:${max}`;
   const trim = h.rightTrim !== undefined ? `>{${h.rightTrim}}` : "";
   return `^(${umiLabel}:N{${umiRange}})${h.leftAnchor}(${readLabel}:*)${h.rightAnchor}${trim}*`;
@@ -106,8 +71,10 @@ export function reverseComplement(seq: string): string {
 export function generateR2fromR1(r1: PatternHalf): PatternHalf {
   const leftAnchor = reverseComplement(r1.rightAnchor);
   const rightAnchor = reverseComplement(r1.leftAnchor);
-  const rightTrim = rightAnchor.length > 0 ? rightAnchor.length - 1 : undefined;
+  const rightTrim = rightAnchor.length > 5 ? 5 : undefined;
   return {
+    umiName: "UMI2",
+    readName: "R2",
     umi: { ...r1.umi },
     leftAnchor,
     rightAnchor,
@@ -127,7 +94,8 @@ export function detectHomopolymers(seq: string): HomopolymerRun[] {
     const base = seq[i].toLowerCase();
     let j = i + 1;
     while (j < seq.length && seq[j].toLowerCase() === base) j++;
-    if (j - i >= 3 && base !== "n") runs.push({ start: i, end: j, base });
+    if (j - i >= 5 && base !== "n" && i > 0 && j < seq.length)
+      runs.push({ start: i, end: j, base });
     i = j;
   }
   return runs;

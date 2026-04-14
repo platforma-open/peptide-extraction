@@ -7,20 +7,11 @@ import {
   isPColumnSpec,
   parseResourceMap,
 } from "@platforma-sdk/model";
+import { parsePattern } from "./pattern";
+import type { PatternParts } from "./pattern";
 
-export type UmiRange = { min: number; max: number };
-
-export type PatternHalf = {
-  umi: UmiRange;
-  leftAnchor: string;
-  rightAnchor: string;
-  rightTrim?: number;
-};
-
-export type PatternParts = {
-  r1: PatternHalf;
-  r2?: PatternHalf;
-};
+export type { UmiRange, PatternHalf, PatternParts } from "./pattern";
+export { parsePattern } from "./pattern";
 
 export type BlockData = {
   defaultBlockLabel?: string;
@@ -28,6 +19,8 @@ export type BlockData = {
   input?: PlRef;
   pattern?: string;
   patternParts?: PatternParts;
+  r2Mode?: "generate" | "manual";
+  r2UseWildcards?: boolean;
   minReadsPerConsensus?: number;
   errorBudget?: number;
   maxIndels?: number;
@@ -69,6 +62,8 @@ const dataModel = new DataModelBuilder()
     autoR1OnlyAssembly: true,
     qcTableState: createPlDataTableStateV2(),
     resultsTableState: createPlDataTableStateV2(),
+    r2Mode: "generate" as const,
+    r2UseWildcards: true,
   }));
 
 export const platforma = BlockModelV3.create(dataModel)
@@ -166,6 +161,8 @@ export const platforma = BlockModelV3.create(dataModel)
   .args((data) => {
     if (!data.input) throw new Error("Input dataset is required");
     if (!data.pattern) throw new Error("mitool parse pattern is required");
+    const patternParts = parsePattern(data.pattern);
+    if (!patternParts) throw new Error("mitool parse pattern is invalid");
     if (data.minReadsPerConsensus !== undefined && data.minReadsPerConsensus < 1)
       throw new Error("Min reads per consensus must be at least 1");
     if (data.errorBudget !== undefined && data.errorBudget < 0)
@@ -179,6 +176,8 @@ export const platforma = BlockModelV3.create(dataModel)
     return {
       input: data.input,
       pattern: data.pattern,
+      patternParts,
+      r2UseWildcards: data.r2UseWildcards ?? true,
       minReadsPerConsensus: data.minReadsPerConsensus,
       errorBudget: data.errorBudget,
       maxIndels: data.maxIndels,
