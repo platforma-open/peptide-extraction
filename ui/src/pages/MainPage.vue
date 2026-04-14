@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { AgGridVue } from "ag-grid-vue3";
-import type { ColDef, GridApi, GridReadyEvent } from "ag-grid-enterprise";
-import { ClientSideRowModelModule, ModuleRegistry } from "ag-grid-enterprise";
+import { plRefsEqual } from "@platforma-sdk/model";
 import type { PlAgHeaderComponentParams } from "@platforma-sdk/ui-vue";
 import {
   AgGridTheme,
@@ -15,7 +13,9 @@ import {
   createAgGridColDef,
   makeRowNumberColDef,
 } from "@platforma-sdk/ui-vue";
-import { plRefsEqual } from "@platforma-sdk/model";
+import type { ColDef, GridApi, GridReadyEvent } from "ag-grid-enterprise";
+import { ClientSideRowModelModule, ModuleRegistry } from "ag-grid-enterprise";
+import { AgGridVue } from "ag-grid-vue3";
 import { computed, reactive, shallowRef, watch, watchEffect } from "vue";
 import { useApp } from "../app";
 import { parseProgressString } from "../parseProgress";
@@ -167,6 +167,7 @@ const gridOptions = {
     v-model="settingsOpen"
     :shadow="true"
     :close-on-outside-click="app.model.outputs.started"
+    width="40%"
   >
     <template #title>Settings</template>
     <SettingsPanel />
