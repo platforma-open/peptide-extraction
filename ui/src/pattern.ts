@@ -86,7 +86,7 @@ export function generateR2fromR1(r1: PatternHalf): PatternHalf {
 
 export type HomopolymerRun = { start: number; end: number; base: string };
 
-/** Find all runs of 3+ identical bases (case-insensitive). */
+/** Find all non-terminal runs of 5+ identical non-N bases (case-insensitive). */
 export function detectHomopolymers(seq: string): HomopolymerRun[] {
   const runs: HomopolymerRun[] = [];
   let i = 0;
@@ -99,17 +99,6 @@ export function detectHomopolymers(seq: string): HomopolymerRun[] {
     i = j;
   }
   return runs;
-}
-
-/** Replace all homopolymer runs (5+, non-terminal) in seq with an equal number of 'n'. */
-export function applyWildcards(seq: string): string {
-  const runs = detectHomopolymers(seq);
-  if (runs.length === 0) return seq;
-  const chars = seq.split("");
-  for (const { start, end } of runs) {
-    for (let i = start; i < end; i++) chars[i] = "n";
-  }
-  return chars.join("");
 }
 
 // ─── Mismatch detection ───────────────────────────────────────────────────────
