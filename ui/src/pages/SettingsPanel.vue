@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import {
   PlAccordionSection,
-  PlCheckbox,
   PlDropdownRef,
   PlNumberField,
-  PlTooltip,
+  PlSectionSeparator,
 } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
@@ -57,7 +56,8 @@ const autoR1OnlyAssembly = computed({
       <template #tooltip> Maximum indels allowed during UMI refine-tags step. </template>
     </PlNumberField>
 
-    <PlCheckbox v-model="autoR1OnlyAssembly">
+    <!-- @TODO: Uncomment this when we have a way to test the R1-only assembly fallback -->
+    <!-- <PlCheckbox v-model="autoR1OnlyAssembly">
       Auto R1-only assembly
       <PlTooltip class="info" position="top">
         <template #tooltip>
@@ -65,8 +65,9 @@ const autoR1OnlyAssembly = computed({
           (assembly discard rate above 10%).
         </template>
       </PlTooltip>
-    </PlCheckbox>
+    </PlCheckbox> -->
 
+    <PlSectionSeparator>Resource Allocation</PlSectionSeparator>
     <PlNumberField
       v-model="app.model.data.perProcessMemGB"
       label="Memory per sample process (GB)"

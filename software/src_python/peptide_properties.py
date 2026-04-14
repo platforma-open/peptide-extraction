@@ -13,10 +13,6 @@ import polars as pl
 from Bio.Seq import Seq
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 
-AMINO_ACIDS = ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L",
-               "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
-
-
 def _translate(nt_seq: str) -> str:
     """Translate a codon-trimmed nucleotide sequence to amino acid, stopping at first stop codon."""
     if not nt_seq:
@@ -37,23 +33,14 @@ def _compute_props(aa_seq: str) -> dict:
     }
 
 
-def _compute_composition(aa_seq: str) -> list[float]:
-    """Return AA percentages in AMINO_ACIDS order. Zero entries become NaN."""
-    if not aa_seq:
-        return [float("nan")] * len(AMINO_ACIDS)
-    pct = ProteinAnalysis(aa_seq).amino_acids_percent
-    return [round(pct[aa], 6) if pct.get(aa, 0.0) > 0 else float("nan") for aa in AMINO_ACIDS]
-
-
 def main():
-    if len(sys.argv) != 4:
-        print(f"Usage: {sys.argv[0]} <input.tsv> <output_properties.tsv> <output_composition.tsv>",
+    if len(sys.argv) != 3:
+        print(f"Usage: {sys.argv[0]} <input.tsv> <output_properties.tsv>",
               file=sys.stderr)
         sys.exit(1)
 
     input_path = sys.argv[1]
     output_props_path = sys.argv[2]
-    output_comp_path = sys.argv[3]
 
     # Read and build base table with nt trimming, translation, and stop codon removal
     df = (
@@ -137,18 +124,6 @@ def main():
         "sampleCount",
         "uniqueMoleculeFractionMean",
     ).write_csv(output_props_path, separator="\t")
-
-    # Write AA composition TSV (long format: peptideKey, aminoAcid, peptideAaPercent)
-    aa_series = pl.Series("aminoAcid", AMINO_ACIDS)
-    comp = df.select(
-        "peptideKey",
-        pl.col("aaSeqPeptide")
-        .map_elements(_compute_composition, return_dtype=pl.List(pl.Float64))
-        .alias("fractions"),
-        pl.lit(aa_series).implode().alias("aminoAcid"),
-    ).explode("fractions", "aminoAcid").rename({"fractions": "peptideAaPercent"}).drop_nans("peptideAaPercent")
-
-    comp.write_csv(output_comp_path, separator="\t")
 
 
 if __name__ == "__main__":

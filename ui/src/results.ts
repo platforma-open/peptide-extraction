@@ -1,12 +1,39 @@
 import { ProgressPrefix } from "@platforma-open/milaboratories.peptide-extraction.model";
+import { ReactiveFileContent } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
+import type { SampleComposition } from "./aaComposition";
+import { parseCompositionNdjson } from "./aaComposition";
 import { useApp } from "./app";
+import type { QcCheckResult } from "./qcChecks";
+import { parseQcChecksNdjson } from "./qcChecks";
+
+const reactiveFileContent = ReactiveFileContent.useGlobal();
 
 export type SampleResult = {
   sampleId: string;
   label: string;
   progress: string;
+  aaComposition?: SampleComposition;
+  qcChecks?: QcCheckResult[];
 };
+
+/** Per-sample AA composition, parsed once and cached until the file changes */
+const compositionMap = computed<Map<string, SampleComposition> | undefined>(() => {
+  const app = useApp();
+  const compositionBlob = app.model.outputs.aaComposition;
+  const content = compositionBlob
+    ? reactiveFileContent.getContentString(compositionBlob.handle)?.value
+    : undefined;
+  return content ? parseCompositionNdjson(content) : undefined;
+});
+
+/** Per-sample QC checks, parsed once and cached until the file changes */
+const qcChecksMap = computed<Map<string, QcCheckResult[]> | undefined>(() => {
+  const app = useApp();
+  const qcBlob = app.model.outputs.qcChecks;
+  const content = qcBlob ? reactiveFileContent.getContentString(qcBlob.handle)?.value : undefined;
+  return content ? parseQcChecksNdjson(content) : undefined;
+});
 
 export const sampleResults = computed<SampleResult[] | undefined>(() => {
   const app = useApp();
@@ -73,6 +100,8 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
         sampleId,
         label: sampleLabels?.[sampleId] ?? sampleId,
         progress: progressStr,
+        aaComposition: compositionMap.value?.get(sampleId),
+        qcChecks: qcChecksMap.value?.get(sampleId),
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));

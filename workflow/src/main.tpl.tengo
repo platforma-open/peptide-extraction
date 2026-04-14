@@ -10,6 +10,7 @@ xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
+file := import("@platforma-sdk/workflow-tengo:file")
 
 times := import("times")
 
@@ -103,10 +104,24 @@ wf.body(func(args) {
 		name: "stepLogs"
 	}
 
+	qcChecksFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/qcChecksFile",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "qcChecksFile",
+		path: ["qcChecks"]
+	}
+
 	perSampleResults := pframes.processColumn(
 		{ spec: inputSpec, data: inputData },
 		mitoolPipelineTpl,
-		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput],
+		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput, qcChecksFileOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sequencing/lane",
@@ -167,21 +182,6 @@ wf.body(func(args) {
 		path: ["propertiesTsv"]
 	}
 
-	compositionXsvOutput := {
-		type: "Xsv",
-		xsvType: "tsv",
-		settings: {
-			axes: [peptideKeyAxis, columnSpecs.aminoAcidAxisSpec],
-			columns: columnSpecs.columnsComposition,
-			storageFormat: "Parquet",
-			partitionKeyLength: 0
-		},
-		mem: string(defaultXsvMemGB) + "GiB",
-		cpu: defaultXsvCPUs,
-		name: "compositionXsv",
-		path: ["compositionTsv"]
-	}
-
 	// Raw properties file (for QC step)
 	// @TODO: Check if there is a way to use perPeptideXsvOutput inside QC template
 	propertiesFileOutput := {
@@ -201,7 +201,7 @@ wf.body(func(args) {
 	aggregateResults := pframes.processColumn(
 		perSampleResults.output("peptideTableFile"),
 		aggregatePeptidesTpl,
-		[perPeptideXsvOutput, compositionXsvOutput, propertiesFileOutput],
+		[perPeptideXsvOutput, propertiesFileOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sampleId",
@@ -228,10 +228,13 @@ wf.body(func(args) {
 
 	qcRun := render.createEphemeral(computeQcTpl, {
 		peptideTablesData: perSampleResults.outputData("peptideTableFile"),
-		propertiesFile: aggregateResults.outputData("propertiesFile")
+		propertiesFile: aggregateResults.outputData("propertiesFile"),
+		qcChecksData: perSampleResults.outputData("qcChecksFile")
 	})
 
 	qcTsvFile := qcRun.output("qcTable")
+	aaCompositionFile := qcRun.output("aaComposition")
+	qcChecksFile := qcRun.output("qcChecks")
 
 	qcColumns := xsv.importFile(
 		qcTsvFile,
@@ -267,7 +270,9 @@ wf.body(func(args) {
 	outputs := {
 		peptides: pframes.exportFrame(peptidesPf),
 		qcReportTable: pframes.exportFrame(qcPf),
-		stepLogs: perSampleResults.outputData("stepLogs")
+		stepLogs: perSampleResults.outputData("stepLogs"),
+		aaComposition: file.exportFile(aaCompositionFile),
+		qcChecks: file.exportFile(qcChecksFile)
 	}
 
 	exports := {

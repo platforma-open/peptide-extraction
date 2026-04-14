@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { AgGridVue } from "ag-grid-vue3";
-import type { ColDef, GridApi, GridReadyEvent } from "ag-grid-enterprise";
-import { ClientSideRowModelModule, ModuleRegistry } from "ag-grid-enterprise";
+import { plRefsEqual } from "@platforma-sdk/model";
 import type { PlAgHeaderComponentParams } from "@platforma-sdk/ui-vue";
 import {
   AgGridTheme,
+  PlAgCellStatusTag,
   PlAgOverlayLoading,
   PlAgOverlayNoRows,
   PlBlockPage,
@@ -15,10 +14,16 @@ import {
   createAgGridColDef,
   makeRowNumberColDef,
 } from "@platforma-sdk/ui-vue";
-import { plRefsEqual } from "@platforma-sdk/model";
+import type { ColDef, GridApi, GridReadyEvent } from "ag-grid-enterprise";
+import { ClientSideRowModelModule, ModuleRegistry } from "ag-grid-enterprise";
+import { AgGridVue } from "ag-grid-vue3";
 import { computed, reactive, shallowRef, watch, watchEffect } from "vue";
 import { useApp } from "../app";
+import type { SampleComposition } from "../aaComposition";
+import AaCompositionHeatmapCell from "../components/AaCompositionHeatmapCell.vue";
 import { parseProgressString } from "../parseProgress";
+import type { QcStatus } from "../qcChecks";
+import { worstStatus } from "../qcChecks";
 import type { SampleResult } from "../results";
 import { sampleResults } from "../results";
 import SampleReportPanel from "./SampleReportPanel.vue";
@@ -127,6 +132,33 @@ const columnDefs: ColDef<SampleResult>[] = [
       };
     },
   }),
+  createAgGridColDef<SampleResult, QcStatus | undefined>({
+    colId: "quality",
+    headerName: "Quality",
+    headerComponentParams: { type: "Text" } satisfies PlAgHeaderComponentParams,
+    width: 126,
+    cellRendererSelector: (cellData) => {
+      const checks = cellData.data?.qcChecks;
+      const status = checks?.length ? worstStatus(checks) : undefined;
+      return {
+        component: PlAgCellStatusTag,
+        params: { type: status },
+      };
+    },
+  }),
+  createAgGridColDef<SampleResult, SampleComposition | undefined>({
+    colId: "aaComposition",
+    headerName: "AA Composition",
+    headerComponentParams: { type: "Text" } satisfies PlAgHeaderComponentParams,
+    flex: 1,
+    cellStyle: {
+      "--ag-cell-horizontal-padding": "4px",
+    },
+    cellRendererSelector: (cellData) => ({
+      component: AaCompositionHeatmapCell,
+      params: { value: cellData.data?.aaComposition },
+    }),
+  }),
 ];
 
 const gridOptions = {
@@ -167,6 +199,7 @@ const gridOptions = {
     v-model="settingsOpen"
     :shadow="true"
     :close-on-outside-click="app.model.outputs.started"
+    width="40%"
   >
     <template #title>Settings</template>
     <SettingsPanel />

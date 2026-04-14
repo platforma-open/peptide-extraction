@@ -15,6 +15,10 @@ json := import("json")
 self.awaitState("InputsLocked")
 self.awaitState("propertiesFile", "ResourceReady")
 self.awaitState("peptideTablesData", "ResourceReady")
+self.awaitState("qcChecksData", "ResourceReady")
+
+aminoAcids := ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L",
+	"M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
 
 self.body(func(inputs) {
 	peptideTablesData := inputs.peptideTablesData
@@ -39,6 +43,7 @@ self.body(func(inputs) {
 		xsvType: "tsv",
 		schema: [
 			{ column: "peptideKey", type: "String" },
+			{ column: "aaSeqPeptide", type: "String" },
 			{ column: "aaLengthPeptide", type: "Int" },
 			{ column: "ntLengthPeptide", type: "Int" },
 			{ column: "hasTrailingNucleotides", type: "String" },
@@ -49,8 +54,9 @@ self.body(func(inputs) {
 		inferSchema: false
 	})
 
-	// Process each sample: join with properties, compute QC stats
+	// Process each sample: join with properties, compute QC stats + AA composition
 	qcFrames := []
+	compFrames := []
 	for sKey in maps.getKeys(peptideTablesMap) {
 		sampleFile := peptideTablesMap[sKey]
 		key := json.decode(sKey)
@@ -85,6 +91,38 @@ self.body(func(inputs) {
 		)
 
 		qcFrames = append(qcFrames, qcRow)
+
+		// Per-sample AA composition: weighted by abundance
+		// Formula: comp_AA = sum(countOf(AA) * abundance) / sum(seqLen * abundance) * 100
+		joinedForComp := joined.filter(pt.col("aaSeqPeptide").strLenChars().gt(0))
+
+		// First pass: aggregate raw weighted counts + total weighted length
+		rawExprs := [
+			pt.lit(sampleId).alias("sampleId"),
+			pt.col("aaSeqPeptide").strLenChars().cast("Double").multiply(
+				pt.col("uniqueMoleculeCount").cast("Double")
+			).sum().alias("_totalLen")
+		]
+		for aa in aminoAcids {
+			rawExprs = append(rawExprs,
+				pt.col("aaSeqPeptide").strCountMatches(aa, {literal: true}).cast("Double").multiply(
+					pt.col("uniqueMoleculeCount").cast("Double")
+				).sum().alias("_cnt_" + aa)
+			)
+		}
+		compRaw := joinedForComp.select(rawExprs...)
+
+		// Second pass: compute percentages
+		pctExprs := [pt.col("sampleId")]
+		for aa in aminoAcids {
+			pctExprs = append(pctExprs,
+				pt.when(pt.col("_totalLen").gt(0)).then(
+					pt.col("_cnt_" + aa).truediv(pt.col("_totalLen")).multiply(pt.lit(100.0))
+				).otherwise(pt.lit(0.0)).alias(aa)
+			)
+		}
+		compRow := compRaw.select(pctExprs...)
+		compFrames = append(compFrames, compRow)
 	}
 
 	allQc := undefined
@@ -94,10 +132,53 @@ self.body(func(inputs) {
 		allQc = pt.concat(qcFrames)
 	}
 
-	allQc.save("qc.tsv")
+	allComp := undefined
+	if len(compFrames) == 1 {
+		allComp = compFrames[0]
+	} else {
+		allComp = pt.concat(compFrames)
+	}
+
+	// Merge per-sample QC checks (NDJSON files from the Python qc_checks script)
+	qcChecksData := inputs.qcChecksData
+	qcChecksMap := qcChecksData.inputs()
+	qcChecksFrames := []
+	for sKey in maps.getKeys(qcChecksMap) {
+		qcFile := qcChecksMap[sKey]
+		key := json.decode(sKey)
+		sampleId := key[0]
+
+		qcDf := wf.frame({
+			file: qcFile,
+			xsvType: "ndjson"
+		}, {
+			id: "qcChecks_" + sampleId
+		})
+
+		// Add sampleId column
+		qcDf = qcDf.withColumns(pt.lit(sampleId).alias("sampleId"))
+		qcChecksFrames = append(qcChecksFrames, qcDf)
+	}
+
+	// Sort all outputs by sampleId for deterministic file content (stable CIDs across re-runs)
+	allQc.sort(["sampleId"]).save("qc.tsv")
+	allComp.sort(["sampleId"]).save("aa-composition.ndjson")
+
+	if len(qcChecksFrames) > 0 {
+		allQcChecks := undefined
+		if len(qcChecksFrames) == 1 {
+			allQcChecks = qcChecksFrames[0]
+		} else {
+			allQcChecks = pt.concat(qcChecksFrames)
+		}
+		allQcChecks.sort(["sampleId", "checkType"]).save("qc-checks.ndjson")
+	}
+
 	result := wf.run()
 
 	return {
-		qcTable: result.getFile("qc.tsv")
+		qcTable: result.getFile("qc.tsv"),
+		aaComposition: result.getFile("aa-composition.ndjson"),
+		qcChecks: result.getFile("qc-checks.ndjson")
 	}
 })
