@@ -172,9 +172,9 @@ export const platforma = BlockModelV3.create(dataModel)
 
   .args((data) => {
     if (!data.input) throw new Error("Input dataset is required");
-    if (!data.pattern) throw new Error("mitool parse pattern is required");
+    if (!data.pattern) throw new Error("Tag pattern is required");
     const patternParts = parsePattern(data.pattern);
-    if (!patternParts) throw new Error("mitool parse pattern is invalid");
+    if (!patternParts) throw new Error("Tag pattern is invalid");
     if (data.minReadsPerConsensus !== undefined && data.minReadsPerConsensus < 1)
       throw new Error("Min reads per consensus must be at least 1");
     if (data.errorBudget !== undefined && data.errorBudget < 0)

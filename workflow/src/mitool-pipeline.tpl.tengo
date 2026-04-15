@@ -36,7 +36,7 @@ self.body(func(inputs) {
 	collapseMemGB := inputs.collapseMemGB
 	collapseCPUs := inputs.collapseCPUs
 
-	ll.assert(!is_undefined(pattern) && pattern != "", "mitool parse pattern is required")
+	ll.assert(!is_undefined(pattern) && pattern != "", "tag pattern is required")
 
 	inputDataMeta := inputData.getDataAsJson()
 

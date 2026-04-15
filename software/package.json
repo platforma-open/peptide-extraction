@@ -1,14 +1,18 @@
 {
   "name": "@platforma-open/milaboratories.peptide-extraction.software",
   "version": "1.0.0",
-  "type": "module",
   "description": "Block Software",
+  "type": "module",
   "scripts": {
     "do-pack": "shx rm -f *.tgz && pl-pkg build && pnpm pack && shx mv platforma-open*.tgz package.tgz",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "build": "pl-pkg build",
     "prepublishOnly": "pl-pkg prepublish"
+  },
+  "devDependencies": {
+    "@platforma-open/milaboratories.runenv-python-3": "catalog:",
+    "@platforma-sdk/package-builder": "catalog:"
   },
   "block-software": {
     "artifacts": {
@@ -27,19 +31,21 @@
       "peptide-properties": {
         "binary": {
           "artifact": "py-archive",
-          "cmd": [ "python", "{pkg}/peptide_properties.py" ]
+          "cmd": [
+            "python",
+            "{pkg}/peptide_properties.py"
+          ]
         }
       },
       "qc-checks": {
         "binary": {
           "artifact": "py-archive",
-          "cmd": [ "python", "{pkg}/qc_checks.py" ]
+          "cmd": [
+            "python",
+            "{pkg}/qc_checks.py"
+          ]
         }
       }
     }
-  },
-  "devDependencies": {
-    "@platforma-open/milaboratories.runenv-python-3": "catalog:",
-    "@platforma-sdk/package-builder": "catalog:"
   }
 }

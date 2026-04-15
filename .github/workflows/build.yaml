@@ -4,10 +4,10 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
     branches:
-      - 'main'
+      - "main"
   push:
     branches:
-      - 'main'
+      - "main"
   workflow_dispatch: {}
 jobs:
   init:
@@ -25,19 +25,19 @@ jobs:
 
     uses: milaboratory/github-ci/.github/workflows/node-simple-pnpm.yaml@v4
     with:
-      app-name: 'Block: peptide-extraction'
-      app-name-slug: 'block-peptide-extraction'
+      app-name: "Block: peptide-extraction"
+      app-name-slug: "block-peptide-extraction"
 
-      node-version: '20.x'
-      build-script-name: 'build'
+      node-version: "20.x"
+      build-script-name: "build"
       pnpm-recursive-build: false
 
       test: false
-      test-script-name: 'test'
+      test-script-name: "test"
       pnpm-recursive-tests: false
-      team-id: 'ciplopen'
+      team-id: "ciplopen"
 
-      package-path: 'block'
+      package-path: "block"
       publish-to-public: true
       create-tag: true
 

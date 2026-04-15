@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import type {
+  PatternHalf,
+  PatternParts,
+} from "@platforma-open/milaboratories.peptide-extraction.model";
+import type { SimpleOption } from "@platforma-sdk/ui-vue";
 import {
   PlAccordionSection,
   PlBtnGroup,
@@ -6,11 +11,6 @@ import {
   PlNumberField,
   PlTextField,
 } from "@platforma-sdk/ui-vue";
-import type { SimpleOption } from "@platforma-sdk/ui-vue";
-import type {
-  PatternHalf,
-  PatternParts,
-} from "@platforma-open/milaboratories.peptide-extraction.model";
 import { computed, reactive, ref, watch } from "vue";
 import { useApp } from "../app";
 import type { HomopolymerRun } from "../pattern";
@@ -375,10 +375,20 @@ const previewSegments = computed((): Segment[] => {
 <template>
   <PlTextField
     v-model="app.model.data.pattern"
-    label="mitool parse pattern"
+    label="Tag pattern"
     :error="patternParseError ?? undefined"
   >
-    <template #tooltip>Full mitool parse pattern including R1 and R2, separated by \</template>
+    <template #tooltip>
+      Use <code>UMI</code>/<code>UMI2</code> for molecular barcodes and <code>R1</code>/<code
+        >R2</code
+      >
+      for peptide sequences. Consider replacing homopolymer runs (5+ identical bases) with
+      <code>n</code> wildcards.<br /><br />
+      Syntax:
+      <a href="https://mixcr.com/mixcr/reference/ref-tag-pattern/" target="_blank">
+        mixcr.com/mixcr/reference/ref-tag-pattern
+      </a>
+    </template>
   </PlTextField>
 
   <PlAccordionSection label="Edit pattern">
