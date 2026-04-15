@@ -90,6 +90,14 @@ export const platforma = BlockModelV3.create(dataModel)
       : undefined;
   })
 
+  // Resolves early (once inputs are locked) to provide the full sample list
+  // before per-sample processing starts. Keys are [sampleId, stepName].
+  .output("sampleKeys", (ctx) => {
+    const acc = ctx.outputs?.resolve("stepLogs");
+    if (!acc || !acc.getInputsLocked()) return undefined;
+    return parseResourceMap(acc, (a) => a.getLogHandle(), true);
+  })
+
   .output("progress", (ctx) => {
     return ctx.outputs !== undefined
       ? parseResourceMap(

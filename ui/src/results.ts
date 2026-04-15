@@ -39,61 +39,79 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
   const app = useApp();
 
   const sampleLabels = app.model.outputs.sampleLabels;
+  const sampleKeys = app.model.outputs.sampleKeys;
   const progress = app.model.outputs.progress;
 
-  if (progress === undefined) return undefined;
-
-  // Progress data has 2-level keys: [sampleId, stepName].
-  // Group by sampleId and find the active step (live=true with latest progress).
-  const sampleMap = new Map<string, { progressLine?: string; live: boolean; step: string }>();
-
-  for (const p of progress.data) {
-    const sampleId = p.key[0] as string;
-    const step = p.key[1] as string;
-    const info = p.value;
-    if (!info) continue;
-
-    const current = sampleMap.get(sampleId);
-    // Pick the latest active step: prefer live steps, then latest step by name
-    if (
-      !current ||
-      (info.live && !current.live) ||
-      (!current.live && step > current.step) ||
-      (info.live && step > current.step)
-    ) {
-      sampleMap.set(sampleId, {
-        progressLine: info.progressLine,
-        live: info.live,
-        step,
-      });
+  // sampleKeys resolves early (once inputs are locked) — provides the full
+  // sample list before per-sample processing starts. Fall back to progress keys.
+  const allSampleIds = new Set<string>();
+  if (sampleKeys) {
+    for (const entry of sampleKeys.data) {
+      allSampleIds.add(entry.key[0] as string);
     }
   }
-
-  // If no entries in the map, extract sample IDs from all progress keys
-  if (sampleMap.size === 0) {
-    const seenSamples = new Set<string>();
+  if (progress) {
     for (const p of progress.data) {
-      seenSamples.add(p.key[0] as string);
-    }
-    for (const sampleId of seenSamples) {
-      sampleMap.set(sampleId, { live: true, step: "", progressLine: undefined });
+      allSampleIds.add(p.key[0] as string);
     }
   }
 
-  const results: SampleResult[] = [...sampleMap.entries()]
-    .map(([sampleId, info]) => {
-      let progressStr = "Queued";
-      if (info.progressLine !== undefined || !info.live) {
-        if (!info.live) {
-          progressStr = "Done";
-        } else if (info.progressLine) {
-          progressStr = info.progressLine.replace(ProgressPrefix, "");
-        }
+  if (allSampleIds.size === 0) return undefined;
+
+  // Build progress lookup: sampleId -> latest active step info
+  const progressMap = new Map<string, { progressLine?: string; live: boolean; step: string }>();
+
+  if (progress) {
+    for (const p of progress.data) {
+      const sampleId = p.key[0] as string;
+      const step = p.key[1] as string;
+      const info = p.value;
+      if (!info) continue;
+
+      const current = progressMap.get(sampleId);
+      if (
+        !current ||
+        (info.live && !current.live) ||
+        (!current.live && step > current.step) ||
+        (info.live && step > current.step)
+      ) {
+        progressMap.set(sampleId, {
+          progressLine: info.progressLine,
+          live: info.live,
+          step,
+        });
       }
-      // Prepend step indicator to progress text (e.g. "[2/6] Correcting UMI: 60%")
-      const stepNum = info.step ? info.step.split("-")[0] : "";
-      if (stepNum && progressStr !== "Done" && progressStr !== "Queued") {
-        progressStr = `[${stepNum}/6] ${progressStr}`;
+    }
+  }
+
+  // Last step that produces a log — when this is done, the pipeline is complete
+  const lastLoggedStep = "5-tagstat";
+
+  const results: SampleResult[] = [...allSampleIds]
+    .map((sampleId) => {
+      const info = progressMap.get(sampleId);
+      let progressStr = "Queued";
+
+      if (info) {
+        const stepNum = info.step ? info.step.split("-")[0] : "";
+        const stepName = info.step ? info.step.split("-").slice(1).join("-") : "";
+
+        if (info.progressLine !== undefined || !info.live) {
+          if (!info.live) {
+            progressStr =
+              info.step >= lastLoggedStep ? "Done" : `[${stepNum}/6] ${stepName} complete`;
+          } else if (info.progressLine) {
+            progressStr = info.progressLine.replace(ProgressPrefix, "");
+          }
+        }
+        if (
+          stepNum &&
+          progressStr !== "Done" &&
+          progressStr !== "Queued" &&
+          !progressStr.startsWith("[")
+        ) {
+          progressStr = `[${stepNum}/6] ${progressStr}`;
+        }
       }
 
       return {

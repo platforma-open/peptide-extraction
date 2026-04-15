@@ -5,6 +5,7 @@ import {
   AgGridTheme,
   PlAgCellStatusTag,
   PlAgOverlayLoading,
+  PlAgTextAndButtonCell,
   PlAgOverlayNoRows,
   PlBlockPage,
   PlBtnGhost,
@@ -104,6 +105,10 @@ const columnDefs: ColDef<SampleResult>[] = [
     pinned: "left",
     lockPinned: true,
     sortable: true,
+    cellRenderer: PlAgTextAndButtonCell,
+    cellRendererParams: {
+      invokeRowsOnDoubleClick: true,
+    },
   }),
   createAgGridColDef<SampleResult, string>({
     colId: "progress",
