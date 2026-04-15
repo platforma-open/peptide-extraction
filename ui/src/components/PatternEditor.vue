@@ -4,13 +4,7 @@ import type {
   PatternParts,
 } from "@platforma-open/milaboratories.peptide-extraction.model";
 import type { SimpleOption } from "@platforma-sdk/ui-vue";
-import {
-  PlAccordionSection,
-  PlBtnGroup,
-  PlCheckbox,
-  PlNumberField,
-  PlTextField,
-} from "@platforma-sdk/ui-vue";
+import { PlBtnGroup, PlCheckbox, PlNumberField, PlTextField } from "@platforma-sdk/ui-vue";
 import { computed, reactive, ref, watch } from "vue";
 import { useApp } from "../app";
 import type { HomopolymerRun } from "../pattern";
@@ -54,14 +48,21 @@ const r2 = reactive<HalfFields>(emptyHalf());
 
 // ── Mode ───────────────────────────────────────────────────────────────────
 
-type R2Mode = "generate" | "manual";
-
-const r2ModeOptions: SimpleOption<R2Mode>[] = [
-  { value: "generate", text: "Generate from R1" },
-  { value: "manual", text: "Edit manually" },
-];
-
 const isGenerateMode = computed(() => (app.model.data.r2Mode ?? "generate") === "generate");
+
+// ── Editor mode (write raw pattern vs. build from fields) ─────────────────
+
+type EditorMode = "write" | "build";
+const editorModeOptions: SimpleOption<EditorMode>[] = [
+  { value: "write", text: "Write pattern" },
+  { value: "build", text: "Build pattern" },
+];
+// Auto-detect: default to "build" if pattern parses, "write" if it doesn't
+const editorMode = ref<EditorMode>(
+  app.model.data.pattern && !parsePattern(app.model.data.pattern) ? "write" : "build",
+);
+
+const readTab = ref<"r1" | "r2">("r1");
 
 // Auto-generated R2 from R1. Wildcards are NOT applied to the pattern string —
 // r2UseWildcards only controls preview highlighting and is passed to the backend.
@@ -111,6 +112,7 @@ const fieldsDisabled = computed(() => patternParseError.value !== null);
 
 // ── Helpers: fields ↔ PatternHalf ──────────────────────────────────────────
 
+/** Strict: returns null if any field is missing or invalid. Used for pattern assembly. */
 function fieldsToHalf(f: HalfFields): PatternHalf | null {
   if (f.umiMin === undefined) return null;
   const leftAnchor = f.leftAnchor?.trim() ?? "";
@@ -132,6 +134,7 @@ function fieldsToHalf(f: HalfFields): PatternHalf | null {
     readName: f.readName,
   };
 }
+
 function halfEquals(a: PatternHalf, b: PatternHalf): boolean {
   return (
     a.umi.min === b.umi.min &&
@@ -198,7 +201,9 @@ function clearPattern() {
   app.model.data.patternParts = undefined;
 }
 
-// Accordion fields + mode → main field + patternParts
+// Fields + mode → main field + patternParts
+// Clears the pattern when fields are invalid (prevents stale patterns from being sent to workflow).
+// Fields themselves are never cleared — only the assembled pattern string.
 watch(
   [r1, r2, () => app.model.data.r2Mode, () => app.model.data.r2UseWildcards],
   () => {
@@ -252,7 +257,7 @@ watch(
 
 // ── Mode switch ────────────────────────────────────────────────────────────
 
-function handleModeChange(newMode: R2Mode) {
+function handleModeChange(newMode: "generate" | "manual") {
   if (newMode === "generate" && !autoR2.value) return; // R1 not valid, nothing to generate
   if (newMode === "generate") {
     const auto = autoR2.value;
@@ -375,25 +380,30 @@ const previewSegments = computed((): Segment[] => {
 </script>
 
 <template>
-  <PlTextField
-    v-model="app.model.data.pattern"
-    label="Tag pattern"
-    :error="patternParseError ?? undefined"
-  >
-    <template #tooltip>
-      Use <code>UMI</code>/<code>UMI2</code> for molecular barcodes and <code>R1</code>/<code
-        >R2</code
-      >
-      for peptide sequences. Consider replacing homopolymer runs (5+ identical bases) with
-      <code>n</code> wildcards.<br /><br />
-      Syntax:
-      <a href="https://mixcr.com/mixcr/reference/ref-tag-pattern/" target="_blank">
-        mixcr.com/mixcr/reference/ref-tag-pattern
-      </a>
-    </template>
-  </PlTextField>
+  <PlBtnGroup v-model="editorMode" :options="editorModeOptions" />
 
-  <PlAccordionSection label="Edit pattern">
+  <!-- Write mode: raw pattern text field -->
+  <template v-if="editorMode === 'write'">
+    <PlTextField
+      v-model="app.model.data.pattern"
+      label="Tag pattern"
+      :error="patternParseError ?? undefined"
+    >
+      <template #tooltip>
+        Use <code>UMI</code>/<code>UMI2</code> for molecular barcodes and <code>R1</code>/<code
+          >R2</code
+        >
+        for peptide sequences.<br /><br />
+        Syntax:
+        <a href="https://mixcr.com/mixcr/reference/ref-tag-pattern/" target="_blank">
+          mixcr.com/mixcr/reference/ref-tag-pattern
+        </a>
+      </template>
+    </PlTextField>
+  </template>
+
+  <!-- Build mode: field-based editor -->
+  <template v-if="editorMode === 'build'">
     <!-- Pattern preview -->
     <div v-if="previewSegments.length" :class="$style.preview">
       <span
@@ -406,124 +416,160 @@ const previewSegments = computed((): Segment[] => {
         >{{ seg.text }}</span
       >
     </div>
-    <PlCheckbox
-      :model-value="app.model.data.r2UseWildcards ?? true"
-      :disabled="fieldsDisabled"
-      @update:model-value="(v) => (app.model.data.r2UseWildcards = v)"
-    >
-      Use wildcards
-    </PlCheckbox>
 
-    <!-- R1 section -->
-    <div :class="$style.sectionLabel">R1</div>
-    <div :class="$style.row">
-      <PlNumberField
-        v-model="r1.umiMin"
-        label="UMI min length"
-        :min-value="1"
-        :required="true"
-        :error-message="r1Errors.umi ?? undefined"
-        :disabled="fieldsDisabled"
-      />
-      <PlNumberField
-        v-model="r1.umiMax"
-        label="UMI max length"
-        :min-value="r1.umiMin ?? 1"
-        :clearable="true"
-        :disabled="fieldsDisabled"
-      />
+    <!-- R1 / R2 tabs -->
+    <div :class="$style.readTabs">
+      <button
+        :class="[$style.readTab, readTab === 'r1' && $style.readTabActive]"
+        @click="readTab = 'r1'"
+      >
+        Read 1
+      </button>
+      <button
+        :class="[$style.readTab, readTab === 'r2' && $style.readTabActive]"
+        @click="readTab = 'r2'"
+      >
+        Read 2
+      </button>
     </div>
-    <PlTextField
-      :model-value="r1.leftAnchor"
-      label="Left anchor"
-      placeholder="e.g. gttcctttctatgcggcccagcc"
-      :required="true"
-      :error="r1Errors.leftAnchor ?? undefined"
-      :disabled="fieldsDisabled"
-      @update:model-value="(v) => (r1.leftAnchor = v || undefined)"
-    />
-    <PlTextField
-      :model-value="r1.rightAnchor"
-      label="Right anchor"
-      placeholder="e.g. gcggccgcacatcatcatcac"
-      :required="true"
-      :error="r1Errors.rightAnchor ?? undefined"
-      :disabled="fieldsDisabled"
-      @update:model-value="(v) => (r1.rightAnchor = v || undefined)"
-    />
 
-    <!-- R2 section -->
-    <div :class="$style.r2Header">
-      <div :class="$style.sectionLabel">R2</div>
-      <PlBtnGroup
-        :model-value="!autoR2 ? 'generate' : (app.model.data.r2Mode ?? 'generate')"
-        :options="r2ModeOptions"
-        :disabled="fieldsDisabled || !autoR2"
-        @update:model-value="handleModeChange"
-      />
-    </div>
-    <template v-if="!isGenerateMode">
+    <!-- R1 fields -->
+    <template v-if="readTab === 'r1'">
       <div :class="$style.row">
         <PlNumberField
-          v-model="r2.umiMin"
+          v-model="r1.umiMin"
           label="UMI min length"
           :min-value="1"
           :required="true"
-          :error-message="r2Errors.umi ?? undefined"
+          :error-message="r1Errors.umi ?? undefined"
           :disabled="fieldsDisabled"
-        />
+        >
+          <template #tooltip>Length range for the random UMI barcode sequence</template>
+        </PlNumberField>
         <PlNumberField
-          v-model="r2.umiMax"
+          v-model="r1.umiMax"
           label="UMI max length"
-          :min-value="r2.umiMin ?? 1"
+          :min-value="r1.umiMin ?? 1"
           :clearable="true"
           :disabled="fieldsDisabled"
         />
       </div>
       <PlTextField
-        :model-value="r2.leftAnchor"
+        :model-value="r1.leftAnchor"
         label="Left anchor"
-        placeholder="e.g. tgagtttttgttctgcggcc"
+        placeholder="e.g. gttcctttctatgcggcccagcc"
         :required="true"
-        :error="r2Errors.leftAnchor ?? undefined"
+        :error="r1Errors.leftAnchor ?? undefined"
         :disabled="fieldsDisabled"
-        @update:model-value="(v) => (r2.leftAnchor = v || undefined)"
-      />
+        @update:model-value="(v) => (r1.leftAnchor = v || undefined)"
+      >
+        <template #tooltip>
+          5' constant region flanking the peptide insert (lowercase = fuzzy match)
+        </template>
+      </PlTextField>
       <PlTextField
-        :model-value="r2.rightAnchor"
+        :model-value="r1.rightAnchor"
         label="Right anchor"
-        placeholder="e.g. ggccatggccgcatagaaagg"
+        placeholder="e.g. gcggccgcacatcatcatcac"
         :required="true"
-        :error="r2Errors.rightAnchor ?? undefined"
+        :error="r1Errors.rightAnchor ?? undefined"
         :disabled="fieldsDisabled"
-        @update:model-value="(v) => (r2.rightAnchor = v || undefined)"
-      />
+        @update:model-value="(v) => (r1.rightAnchor = v || undefined)"
+      >
+        <template #tooltip>
+          3' constant region flanking the peptide insert (lowercase = fuzzy match)
+        </template>
+      </PlTextField>
     </template>
-  </PlAccordionSection>
+
+    <!-- R2 fields -->
+    <template v-if="readTab === 'r2'">
+      <PlCheckbox
+        :model-value="isGenerateMode"
+        :disabled="fieldsDisabled || !autoR2"
+        @update:model-value="(v) => handleModeChange(v ? 'generate' : 'manual')"
+      >
+        Auto-generate from R1
+      </PlCheckbox>
+      <template v-if="!isGenerateMode">
+        <div :class="$style.row">
+          <PlNumberField
+            v-model="r2.umiMin"
+            label="UMI min length"
+            :min-value="1"
+            :required="true"
+            :error-message="r2Errors.umi ?? undefined"
+            :disabled="fieldsDisabled"
+          >
+            <template #tooltip>Length range for the random UMI barcode sequence</template>
+          </PlNumberField>
+          <PlNumberField
+            v-model="r2.umiMax"
+            label="UMI max length"
+            :min-value="r2.umiMin ?? 1"
+            :clearable="true"
+            :disabled="fieldsDisabled"
+          />
+        </div>
+        <PlTextField
+          :model-value="r2.leftAnchor"
+          label="Left anchor"
+          placeholder="e.g. tgagtttttgttctgcggcc"
+          :required="true"
+          :error="r2Errors.leftAnchor ?? undefined"
+          :disabled="fieldsDisabled"
+          @update:model-value="(v) => (r2.leftAnchor = v || undefined)"
+        >
+          <template #tooltip>
+            5' constant region flanking the peptide insert (lowercase = fuzzy match)
+          </template>
+        </PlTextField>
+        <PlTextField
+          :model-value="r2.rightAnchor"
+          label="Right anchor"
+          placeholder="e.g. ggccatggccgcatagaaagg"
+          :required="true"
+          :error="r2Errors.rightAnchor ?? undefined"
+          :disabled="fieldsDisabled"
+          @update:model-value="(v) => (r2.rightAnchor = v || undefined)"
+        >
+          <template #tooltip>
+            3' constant region flanking the peptide insert (lowercase = fuzzy match)
+          </template>
+        </PlTextField>
+      </template>
+    </template>
+  </template>
 </template>
 
 <style module>
-.sectionLabel {
-  font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--pl-text-secondary, #888);
-  margin-top: 12px;
-  margin-bottom: 2px;
-}
-
-.r2Header {
+.readTabs {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
-  flex-wrap: wrap;
+  gap: 0;
+  border-bottom: 1px solid var(--pl-border, #ddd);
+  margin-top: 8px;
 }
 
-.r2Header .sectionLabel {
-  margin-top: 0;
-  margin-bottom: 0;
+.readTab {
+  all: unset;
+  cursor: pointer;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--pl-text-secondary, #888);
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.readTab:hover {
+  color: var(--pl-text-primary, #222);
+}
+
+.readTabActive {
+  color: var(--pl-text-primary, #222);
+  border-bottom-color: var(--pl-accent, #2563eb);
 }
 
 .row {

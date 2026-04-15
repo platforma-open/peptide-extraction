@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import {
   PlAccordionSection,
+  PlCheckbox,
   PlDropdownRef,
   PlNumberField,
   PlSectionSeparator,
+  PlTooltip,
 } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
@@ -55,6 +57,22 @@ const autoR1OnlyAssembly = computed({
     >
       <template #tooltip> Maximum indels allowed during UMI refine-tags step. </template>
     </PlNumberField>
+
+    <div style="display: flex; align-items: center; gap: 4px">
+      <PlCheckbox
+        :model-value="app.model.data.r2UseWildcards ?? true"
+        @update:model-value="(v) => (app.model.data.r2UseWildcards = v)"
+      >
+        Replace pattern homopolymers with wildcards
+      </PlCheckbox>
+      <PlTooltip class="info">
+        <template #tooltip>
+          Detect runs of 5+ identical bases in constant region anchors and replace them with
+          <code>n</code> wildcards. Homopolymers waste error budget because sequencers struggle to
+          resolve exact repeat lengths.
+        </template>
+      </PlTooltip>
+    </div>
 
     <!-- @TODO: Uncomment this when we have a way to test the R1-only assembly fallback -->
     <!-- <PlCheckbox v-model="autoR1OnlyAssembly">
