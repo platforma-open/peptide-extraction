@@ -53,7 +53,7 @@ wf.body(func(args) {
 	inputSpec := args.resolvedInput.spec
 	inputData := args.resolvedInput.data
 
-	peptideKeyAxis := columnSpecs.peptideKeyAxisSpec(blockId)
+	variantKeyAxis := columnSpecs.variantKeyAxisSpec(blockId)
 
 	// Step 1: Per-sample mitool pipeline + collapse
 	// Outputs: peptide table TSV (Resource + Xsv) and log per sample
@@ -76,7 +76,7 @@ wf.body(func(args) {
 		type: "Xsv",
 		xsvType: "tsv",
 		settings: {
-			axes: [peptideKeyAxis],
+			axes: [variantKeyAxis],
 			columns: columnSpecs.columnsPerSample,
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
@@ -171,8 +171,8 @@ wf.body(func(args) {
 		type: "Xsv",
 		xsvType: "tsv",
 		settings: {
-			axes: [peptideKeyAxis],
-			columns: columnSpecs.columnsPerPeptideFromSample + columnSpecs.columnsAggregated,
+			axes: [variantKeyAxis],
+			columns: columnSpecs.columnsPerVariantFromSample + columnSpecs.columnsAggregated,
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		},

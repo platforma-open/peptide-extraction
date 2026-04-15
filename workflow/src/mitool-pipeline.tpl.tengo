@@ -289,9 +289,9 @@ self.body(func(inputs) {
 		pt.col("count").sum().alias("readCount")
 	)
 
-	// Per-sample normalization + rename R1 -> peptideKey
+	// Per-sample normalization + rename R1 -> variantKey
 	collapsed = collapsed.withColumns(
-		pt.col("R1").alias("peptideKey"),
+		pt.col("R1").alias("variantKey"),
 		pt.col("uniqueMoleculeCount").cast("Double").truediv(
 			pt.col("uniqueMoleculeCount").sum()
 		).alias("uniqueMoleculeFraction"),

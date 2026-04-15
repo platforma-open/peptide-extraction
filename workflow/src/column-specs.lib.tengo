@@ -1,6 +1,6 @@
 // Column spec definitions for the peptide extraction block.
 // Used by main.tpl.tengo for processColumn output definitions and exports.
-// Specs match peptide-specs.md and peptide-properties.md.
+// Specs use universal pl7.app/ names.
 
 maps := import("@platforma-sdk/workflow-tengo:maps")
 
@@ -12,13 +12,13 @@ a := func(order, defaultVisibility, spec) {
 	})
 }
 
-// Axis spec for peptideKey
-peptideKeyAxisSpec := func(blockId) {
+// Axis spec for variantKey (unique per distinct peptide nucleotide sequence)
+variantKeyAxisSpec := func(blockId) {
 	return {
-		column: "peptideKey",
+		column: "variantKey",
 		naRegex: "",
 		spec: {
-			name: "pl7.app/peptide/peptideKey",
+			name: "pl7.app/variantKey",
 			type: "String",
 			domain: {
 				"pl7.app/peptide/extractionRunId": blockId
@@ -34,7 +34,7 @@ peptideKeyAxisSpec := func(blockId) {
 	}
 }
 
-// --- Per-sample columns (2 axes: sampleId, peptideKey) ---
+// --- Per-sample columns (2 axes: sampleId, variantKey) ---
 
 columnsPerSample := [
 	{
@@ -42,7 +42,7 @@ columnsPerSample := [
 		id: "umi-count",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/peptide/uniqueMoleculeCount",
+			name: "pl7.app/uniqueMoleculeCount",
 			valueType: "Long",
 			annotations: a(88000, true, {
 				"pl7.app/min": "1",
@@ -60,7 +60,7 @@ columnsPerSample := [
 		id: "umi-fraction",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/peptide/uniqueMoleculeFraction",
+			name: "pl7.app/uniqueMoleculeFraction",
 			valueType: "Double",
 			annotations: a(87500, true, {
 				"pl7.app/min": "0",
@@ -79,7 +79,7 @@ columnsPerSample := [
 		id: "read-count",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/peptide/readCount",
+			name: "pl7.app/readCount",
 			valueType: "Long",
 			annotations: a(90000, false, {
 				"pl7.app/min": "1",
@@ -95,7 +95,7 @@ columnsPerSample := [
 		id: "read-fraction",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/peptide/readFraction",
+			name: "pl7.app/readFraction",
 			valueType: "Double",
 			annotations: a(89000, false, {
 				"pl7.app/min": "0",
@@ -110,24 +110,23 @@ columnsPerSample := [
 	}
 ]
 
-// --- Per-peptide columns (1 axis: peptideKey) ---
-// These are output by the per-sample template but have no sample dimension.
-// The aggregation template will also produce cross-sample aggregates.
+// --- Per-variant (peptide) columns from sample template (1 axis: variantKey) ---
+// Sequences and lengths, output by the Python properties script.
 
-columnsPerPeptideFromSample := [
+columnsPerVariantFromSample := [
 	{
 		column: "nSeqPeptide",
 		id: "n-seq-peptide",
 		spec: {
-			name: "pl7.app/peptide/sequence",
+			name: "pl7.app/sequence",
 			valueType: "String",
 			domain: {
-				"pl7.app/peptide/feature": "peptide",
+				"pl7.app/feature": "peptide",
 				"pl7.app/alphabet": "nucleotide"
 			},
 			annotations: a(80000, false, {
-				"pl7.app/peptide/isAssemblingFeature": "true",
-				"pl7.app/peptide/isMainSequence": "true",
+				"pl7.app/isAssemblingFeature": "true",
+				"pl7.app/isMainSequence": "true",
 				"pl7.app/table/fontFamily": "monospace",
 				"pl7.app/label": "Peptide nt"
 			})
@@ -137,15 +136,15 @@ columnsPerPeptideFromSample := [
 		column: "aaSeqPeptide",
 		id: "aa-seq-peptide",
 		spec: {
-			name: "pl7.app/peptide/sequence",
+			name: "pl7.app/sequence",
 			valueType: "String",
 			domain: {
-				"pl7.app/peptide/feature": "peptide",
+				"pl7.app/feature": "peptide",
 				"pl7.app/alphabet": "aminoacid"
 			},
 			annotations: a(79900, true, {
-				"pl7.app/peptide/isAssemblingFeature": "true",
-				"pl7.app/peptide/isMainSequence": "true",
+				"pl7.app/isAssemblingFeature": "true",
+				"pl7.app/isMainSequence": "true",
 				"pl7.app/table/fontFamily": "monospace",
 				"pl7.app/label": "Peptide aa"
 			})
@@ -155,10 +154,10 @@ columnsPerPeptideFromSample := [
 		column: "aaLengthPeptide",
 		id: "aa-length-peptide",
 		spec: {
-			name: "pl7.app/peptide/sequenceLength",
+			name: "pl7.app/sequenceLength",
 			valueType: "Int",
 			domain: {
-				"pl7.app/peptide/feature": "peptide",
+				"pl7.app/feature": "peptide",
 				"pl7.app/alphabet": "aminoacid"
 			},
 			annotations: a(79800, true, {
@@ -170,10 +169,10 @@ columnsPerPeptideFromSample := [
 		column: "ntLengthPeptide",
 		id: "nt-length-peptide",
 		spec: {
-			name: "pl7.app/peptide/sequenceLength",
+			name: "pl7.app/sequenceLength",
 			valueType: "Int",
 			domain: {
-				"pl7.app/peptide/feature": "peptide",
+				"pl7.app/feature": "peptide",
 				"pl7.app/alphabet": "nucleotide"
 			},
 			annotations: a(79700, false, {
@@ -183,7 +182,7 @@ columnsPerPeptideFromSample := [
 	}
 ]
 
-// --- Aggregation columns (1 axis: peptideKey, computed cross-sample) ---
+// --- Aggregation columns (1 axis: variantKey, computed cross-sample) ---
 
 columnsAggregated := [
 	{
@@ -191,7 +190,7 @@ columnsAggregated := [
 		id: "umi-count-total",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/peptide/uniqueMoleculeCountTotal",
+			name: "pl7.app/uniqueMoleculeCountTotal",
 			valueType: "Long",
 			annotations: a(87120, true, {
 				"pl7.app/min": "1",
@@ -207,7 +206,7 @@ columnsAggregated := [
 		id: "sample-count",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/peptide/sampleCount",
+			name: "pl7.app/sampleCount",
 			valueType: "Int",
 			annotations: a(87110, true, {
 				"pl7.app/min": "1",
@@ -223,7 +222,7 @@ columnsAggregated := [
 		id: "umi-fraction-mean",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/peptide/uniqueMoleculeFractionMean",
+			name: "pl7.app/uniqueMoleculeFractionMean",
 			valueType: "Double",
 			annotations: a(87130, false, {
 				"pl7.app/description": "The average UMI fraction of a peptide across all samples where it is present.",
@@ -248,64 +247,66 @@ columnsAggregated := [
 			})
 		}
 	},
-	{
-		column: "peptideCharge",
-		id: "peptide-charge",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/peptide/charge",
-			valueType: "Double",
-			annotations: a(70000, true, {
-				"pl7.app/label": "Net Charge (pH 7)",
-				"pl7.app/format": ".2f"
-			})
-		}
-	},
-	{
-		column: "peptideHydrophobicity",
-		id: "peptide-hydrophobicity",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/peptide/hydrophobicity",
-			valueType: "Double",
-			annotations: a(69900, true, {
-				"pl7.app/label": "Hydrophobicity (GRAVY)",
-				"pl7.app/format": ".3f"
-			})
-		}
-	},
-	{
-		column: "peptideMolecularWeight",
-		id: "peptide-molecular-weight",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/peptide/molecularWeight",
-			valueType: "Double",
-			annotations: a(69800, true, {
-				"pl7.app/label": "Molecular Weight (Da)",
-				"pl7.app/format": ".1f"
-			})
-		}
-	},
-	{
-		column: "peptideIsoelectricPoint",
-		id: "peptide-isoelectric-point",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/peptide/isoelectricPoint",
-			valueType: "Double",
-			annotations: a(69700, true, {
-				"pl7.app/label": "Isoelectric Point (pI)",
-				"pl7.app/format": ".2f"
-			})
-		}
-	},
+	// Property columns — computed by Python but not yet in the formal spec.
+	// Remove when downstream blocks produce them instead.
+	// {
+	// 	column: "peptideCharge",
+	// 	id: "peptide-charge",
+	// 	allowNA: false,
+	// 	spec: {
+	// 		name: "pl7.app/charge",
+	// 		valueType: "Double",
+	// 		annotations: a(70000, true, {
+	// 			"pl7.app/label": "Net Charge (pH 7)",
+	// 			"pl7.app/format": ".2f"
+	// 		})
+	// 	}
+	// },
+	// {
+	// 	column: "peptideHydrophobicity",
+	// 	id: "peptide-hydrophobicity",
+	// 	allowNA: false,
+	// 	spec: {
+	// 		name: "pl7.app/hydrophobicity",
+	// 		valueType: "Double",
+	// 		annotations: a(69900, true, {
+	// 			"pl7.app/label": "Hydrophobicity (GRAVY)",
+	// 			"pl7.app/format": ".3f"
+	// 		})
+	// 	}
+	// },
+	// {
+	// 	column: "peptideMolecularWeight",
+	// 	id: "peptide-molecular-weight",
+	// 	allowNA: false,
+	// 	spec: {
+	// 		name: "pl7.app/molecularWeight",
+	// 		valueType: "Double",
+	// 		annotations: a(69800, true, {
+	// 			"pl7.app/label": "Molecular Weight (Da)",
+	// 			"pl7.app/format": ".1f"
+	// 		})
+	// 	}
+	// },
+	// {
+	// 	column: "peptideIsoelectricPoint",
+	// 	id: "peptide-isoelectric-point",
+	// 	allowNA: false,
+	// 	spec: {
+	// 		name: "pl7.app/isoelectricPoint",
+	// 		valueType: "Double",
+	// 		annotations: a(69700, true, {
+	// 			"pl7.app/label": "Isoelectric Point (pI)",
+	// 			"pl7.app/format": ".2f"
+	// 		})
+	// 	}
+	// },
 	{
 		column: "hasTrailingNucleotides",
 		id: "has-trailing-nucleotides",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/peptide/hasTrailingNucleotides",
+			name: "pl7.app/peptide/qc/hasTrailingNucleotides",
 			valueType: "String",
 			annotations: a(60000, false, {
 				"pl7.app/label": "Trailing Nucleotides"
@@ -317,7 +318,7 @@ columnsAggregated := [
 		id: "has-early-stop-codon",
 		allowNA: false,
 		spec: {
-			name: "pl7.app/peptide/hasEarlyStopCodon",
+			name: "pl7.app/peptide/qc/hasEarlyStopCodon",
 			valueType: "String",
 			annotations: a(59900, false, {
 				"pl7.app/label": "Early Stop Codon"
@@ -412,20 +413,10 @@ columnsQc := [
 	}
 ]
 
-// Schema for reading per-sample TSVs in the aggregation template
-perSampleSchema := func() {
-	schema := []
-	for col in columnsPerSample {
-		schema = append(schema, { column: col.column, type: col.spec.valueType })
-	}
-	return schema
-}
-
 export {
-	peptideKeyAxisSpec: peptideKeyAxisSpec,
+	variantKeyAxisSpec: variantKeyAxisSpec,
 	columnsPerSample: columnsPerSample,
-	columnsPerPeptideFromSample: columnsPerPeptideFromSample,
+	columnsPerVariantFromSample: columnsPerVariantFromSample,
 	columnsAggregated: columnsAggregated,
-	columnsQc: columnsQc,
-	perSampleSchema: perSampleSchema
+	columnsQc: columnsQc
 }

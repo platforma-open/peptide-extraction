@@ -39,7 +39,7 @@ self.body(func(inputs) {
 		cpu(int(math.max(numberOfSamples, aggMinCPUs)))
 
 	baseSchema := [
-		{ column: "peptideKey", type: "String" },
+		{ column: "variantKey", type: "String" },
 		{ column: "uniqueMoleculeCount", type: "Long" },
 		{ column: "readCount", type: "Long" },
 		{ column: "uniqueMoleculeFraction", type: "Double" },
@@ -77,7 +77,7 @@ self.body(func(inputs) {
 	}
 
 	// Aggregate across samples per peptide
-	aggregatedDf := currentDf.groupBy("peptideKey").agg(
+	aggregatedDf := currentDf.groupBy("variantKey").agg(
 		pt.col("uniqueMoleculeCount").sum().alias("uniqueMoleculeCountSum"),
 		pt.col("uniqueMoleculeFraction").count().alias("sampleCount"),
 		pt.col("uniqueMoleculeFraction").mean().alias("uniqueMoleculeFractionMean")

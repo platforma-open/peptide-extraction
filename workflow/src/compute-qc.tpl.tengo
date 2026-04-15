@@ -42,7 +42,7 @@ self.body(func(inputs) {
 		file: propertiesFile,
 		xsvType: "tsv",
 		schema: [
-			{ column: "peptideKey", type: "String" },
+			{ column: "variantKey", type: "String" },
 			{ column: "aaSeqPeptide", type: "String" },
 			{ column: "aaLengthPeptide", type: "Int" },
 			{ column: "ntLengthPeptide", type: "Int" },
@@ -66,7 +66,7 @@ self.body(func(inputs) {
 			file: sampleFile,
 			xsvType: "tsv",
 			schema: [
-				{ column: "peptideKey", type: "String" },
+				{ column: "variantKey", type: "String" },
 				{ column: "uniqueMoleculeCount", type: "Long" },
 				{ column: "readCount", type: "Long" }
 			]
@@ -76,14 +76,14 @@ self.body(func(inputs) {
 		})
 
 		// Join with properties
-		joined := sampleDf.join(propsDf, { on: "peptideKey", how: "left" })
+		joined := sampleDf.join(propsDf, { on: "variantKey", how: "left" })
 
 		// Aggregate QC stats (one row)
 		qcRow := joined.select(
 			pt.lit(sampleId).alias("sampleId"),
 			pt.col("readCount").sum().alias("totalReads"),
 			pt.col("uniqueMoleculeCount").sum().alias("totalUMIs"),
-			pt.col("peptideKey").count().alias("uniquePeptides"),
+			pt.col("variantKey").count().alias("uniquePeptides"),
 			pt.col("aaLengthPeptide").mean().alias("avgLengthAa"),
 			pt.col("ntLengthPeptide").mean().alias("avgLengthNt"),
 			pt.col("hasTrailingNucleotides").eq(pt.lit("true")).cast("Int").sum().alias("hasTrailingNucleotides"),
