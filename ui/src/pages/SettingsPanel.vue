@@ -4,10 +4,10 @@ import {
   PlDropdownRef,
   PlNumberField,
   PlSectionSeparator,
-  PlTextField,
 } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
+import PatternEditor from "../components/PatternEditor.vue";
 
 const app = useApp();
 
@@ -30,9 +30,7 @@ const autoR1OnlyAssembly = computed({
     @update:model-value="(v) => (app.model.data.input = v)"
   />
 
-  <PlTextField v-model="app.model.data.pattern" label="mitool parse pattern">
-    <template #tooltip> Full mitool parse pattern including R1 and R2, separated by \ </template>
-  </PlTextField>
+  <PatternEditor />
 
   <PlAccordionSection label="Advanced settings">
     <PlNumberField
