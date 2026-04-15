@@ -182,7 +182,10 @@ export const platforma = BlockModelV3.create(dataModel)
     if (!data.input) throw new Error("Input dataset is required");
     if (!data.pattern) throw new Error("Tag pattern is required");
     const patternParts = parsePattern(data.pattern);
-    if (!patternParts) throw new Error("Tag pattern is invalid");
+    if (!patternParts)
+      throw new Error(
+        "Tag pattern is invalid. UMI tags must be named UMI, UMI1, UMI2, etc. Peptide tags must be named R1, R2, etc. All tag names must be unique.",
+      );
     if (data.minReadsPerConsensus !== undefined && data.minReadsPerConsensus < 1)
       throw new Error("Min reads per consensus must be at least 1");
     if (data.errorBudget !== undefined && data.errorBudget < 0)

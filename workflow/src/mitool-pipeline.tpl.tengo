@@ -36,6 +36,18 @@ self.body(func(inputs) {
 	collapseMemGB := inputs.collapseMemGB
 	collapseCPUs := inputs.collapseCPUs
 
+	// Tag names from parsed pattern (e.g., "UMI", "UMI1", "R1", "R2")
+	parts := inputs.patternParts
+	r1UmiName := parts.r1.umiName
+	r1ReadName := parts.r1.readName
+	r2UmiName := ""
+	r2ReadName := ""
+	if !is_undefined(parts.r2) {
+		r2UmiName = parts.r2.umiName
+		r2ReadName = parts.r2.readName
+	}
+	hasR2Umi := r2UmiName != ""
+
 	ll.assert(!is_undefined(pattern) && pattern != "", "tag pattern is required")
 
 	inputDataMeta := inputData.getDataAsJson()
@@ -151,8 +163,13 @@ self.body(func(inputs) {
 		cpu(mitoolCPUs).
 		mem(mitoolMem).
 		arg("refine-tags").
-		arg("-t").arg("UMI").
-		arg("-t").arg("UMI2").
+		arg("-t").arg(r1UmiName)
+
+	if hasR2Umi {
+		refineCmd = refineCmd.arg("-t").arg(r2UmiName)
+	}
+
+	refineCmd = refineCmd.
 		arg("--substitution-rate").arg("0.00001").
 		arg("--max-indels").arg(string(maxIndels)).
 		arg("--report").arg("refine_report.txt").
@@ -177,8 +194,13 @@ self.body(func(inputs) {
 		cpu(mitoolCPUs).
 		mem(mitoolMem).
 		arg("sort").
-		arg("-s").arg("UMI").
-		arg("-s").arg("UMI2").
+		arg("-s").arg(r1UmiName)
+
+	if hasR2Umi {
+		sortCmd = sortCmd.arg("-s").arg(r2UmiName)
+	}
+
+	sortCmd = sortCmd.
 		arg("--use-local-temp").
 		addFile("refined.mic", refinedMic).
 		arg("refined.mic").
@@ -201,12 +223,15 @@ self.body(func(inputs) {
 			cpu(mitoolCPUs).
 			mem(mitoolMem).
 			arg("consensus").
-			arg("--group-tag").arg("UMI").
-			arg("--group-tag").arg("UMI2").
-			arg("--assemble-tag").arg("R1")
+			arg("--group-tag").arg(r1UmiName).
+			arg("--assemble-tag").arg(r1ReadName)
 
-		if assembleR2 {
-			cmd = cmd.arg("--assemble-tag").arg("R2")
+		// R2: group by UMI2 (always if present) + assemble R2 (can be disabled for R1-only fallback)
+		if hasR2Umi {
+			cmd = cmd.arg("--group-tag").arg(r2UmiName)
+			if assembleR2 {
+				cmd = cmd.arg("--assemble-tag").arg(r2ReadName)
+			}
 		}
 
 		cmd = cmd.
@@ -223,8 +248,8 @@ self.body(func(inputs) {
 		return cmd
 	}
 
-	// First attempt: assemble both R1 and R2 (if paired-end)
-	consensusCmd := buildConsensusCmd(sortedMic, isPairedEnd)
+	// Assemble R2 if pattern defines it and input has R2 files
+	consensusCmd := buildConsensusCmd(sortedMic, hasR2Umi && isPairedEnd)
 	consensusMic := consensusCmd.getFile("consensus.mic")
 
 	// TODO: R1-only fallback logic
@@ -245,9 +270,14 @@ self.body(func(inputs) {
 		cpu(mitoolCPUs).
 		mem(mitoolMem).
 		arg("tag-stat").
-		arg("-t").arg("R1").
-		arg("-t").arg("UMI").
-		arg("-t").arg("UMI2").
+		arg("-t").arg(r1ReadName).
+		arg("-t").arg(r1UmiName)
+
+	if hasR2Umi {
+		tagStatCmd = tagStatCmd.arg("-t").arg(r2UmiName)
+	}
+
+	tagStatCmd = tagStatCmd.
 		addFile("consensus.mic", consensusMic).
 		arg("consensus.mic").
 		arg("tagstat.tsv").
@@ -259,7 +289,7 @@ self.body(func(inputs) {
 	// =========================================================================
 	// Step 6: Collapse tag-stat to peptide table
 	//
-	// Groups by peptide nt sequence, counts molecules, sums reads,
+	// Groups by peptide nt sequence (r1ReadName tag), counts molecules, sums reads,
 	// computes per-sample fractions.
 	// =========================================================================
 
@@ -267,31 +297,35 @@ self.body(func(inputs) {
 		mem(collapseMemGB * units.GiB).
 		cpu(collapseCPUs)
 
-	// tag-stat columns: R1 (peptide nt seq), UMI, UMI2, count (reads in molecule), totalWeight
+	// Build schema matching tag-stat output columns
+	tagStatSchema := [
+		{ column: r1ReadName, type: "String" },
+		{ column: r1UmiName, type: "String" }
+	]
+	if hasR2Umi {
+		tagStatSchema = append(tagStatSchema, { column: r2UmiName, type: "String" })
+	}
+	tagStatSchema = append(tagStatSchema, { column: "count", type: "Long" })
+	tagStatSchema = append(tagStatSchema, { column: "totalWeight", type: "Double" })
+
 	df := collapseWf.frame({
 		file: tagStatTsv,
 		xsvType: "tsv",
-		schema: [
-			{ column: "R1", type: "String" },
-			{ column: "UMI", type: "String" },
-			{ column: "UMI2", type: "String" },
-			{ column: "count", type: "Long" },
-			{ column: "totalWeight", type: "Double" }
-		]
+		schema: tagStatSchema
 	}, {
 		id: "tagstat",
 		inferSchema: false
 	})
 
 	// Group by peptide nt sequence: count molecules (rows), sum reads
-	collapsed := df.groupBy("R1").agg(
-		pt.col("R1").count().alias("uniqueMoleculeCount"),
+	collapsed := df.groupBy(r1ReadName).agg(
+		pt.col(r1ReadName).count().alias("uniqueMoleculeCount"),
 		pt.col("count").sum().alias("readCount")
 	)
 
-	// Per-sample normalization + rename R1 -> variantKey
+	// Per-sample normalization + rename read tag -> variantKey
 	collapsed = collapsed.withColumns(
-		pt.col("R1").alias("variantKey"),
+		pt.col(r1ReadName).alias("variantKey"),
 		pt.col("uniqueMoleculeCount").cast("Double").truediv(
 			pt.col("uniqueMoleculeCount").sum()
 		).alias("uniqueMoleculeFraction"),

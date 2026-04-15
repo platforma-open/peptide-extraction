@@ -152,7 +152,8 @@ wf.body(func(args) {
 				errorBudget: args.errorBudget,
 				maxIndels: args.maxIndels,
 				minReadsPerConsensus: args.minReadsPerConsensus,
-				autoR1OnlyAssembly: args.autoR1OnlyAssembly
+				autoR1OnlyAssembly: args.autoR1OnlyAssembly,
+				patternParts: args.patternParts
 			},
 
 			// by passing those parameters as meta fields we allow for recovery and deduplication mechanisms

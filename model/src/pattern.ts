@@ -17,12 +17,11 @@ export type PatternParts = {
 // Matches one half of a mitool parse pattern:
 //   ^(<umiName>:N{min:max})<leftAnchor>(<readName>:*)<rightAnchor>>{trim}*
 //
-// UMI tag name: any alphanumeric sequence starting with a letter (e.g. UMI, UMI1, CELL).
-// Read tag name: R followed by one or more digits (e.g. R1, R2) — mitool classifies a tag
-// as a read group only when name.drop(1).toIntOrNull() != null.
+// UMI tag name: UMI followed by optional digits (e.g. UMI, UMI1, UMI2).
+// Peptide tag name: R followed by one or more digits (e.g. R1, R2).
 // Groups: 1=umiName, 2=umiMin, 3=umiMax(or empty), 4=leftAnchor, 5=readName, 6=rightAnchor, 7=trim(or empty)
 const HALF_RE =
-  /^\^\(([A-Za-z][A-Za-z0-9]*):N\{(\d+)(?::(\d+))?\}\)([A-Za-z]+)\(([Rr]\d+):\*\)([A-Za-z]+)(?:>\{(\d+)\})?\*$/;
+  /^\^\(([Uu][Mm][Ii]\d*):N\{(\d+)(?::(\d+))?\}\)([A-Za-z]+)\(([Rr]\d+):\*\)([A-Za-z]+)(?:>\{(\d+)\})?\*$/;
 
 function parseHalf(s: string): PatternHalf | null {
   const m = HALF_RE.exec(s.trim());
@@ -49,5 +48,10 @@ export function parsePattern(str: string): PatternParts | null {
   const r1 = parseHalf(str.slice(0, sep));
   const r2 = parseHalf(str.slice(sep + 1));
   if (!r1 || !r2) return null;
+
+  // All four tag names must be unique
+  const tags = [r1.umiName, r1.readName, r2.umiName, r2.readName];
+  if (new Set(tags).size !== tags.length) return null;
+
   return { r1, r2 };
 }

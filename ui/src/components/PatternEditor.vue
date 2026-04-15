@@ -102,7 +102,9 @@ const r2Errors = computed(() => ({
 const patternParseError = computed(() => {
   const p = app.model.data.pattern;
   if (!p) return null;
-  return parsePattern(p) === null ? "Pattern cannot be parsed" : null;
+  return parsePattern(p) === null
+    ? "Invalid pattern. UMI tags: UMI, UMI1, UMI2... Peptide tags: R1, R2... All tag names must be unique."
+    : null;
 });
 
 const fieldsDisabled = computed(() => patternParseError.value !== null);
