@@ -12,7 +12,11 @@ function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
   const umiLabel = h.umiName ?? (defaultIndex === 2 ? "UMI2" : "UMI");
   const readLabel = h.readName ?? (defaultIndex === 2 ? "R2" : "R1");
   const umiRange = min === max ? `${min}` : `${min}:${max}`;
-  const trim = h.rightTrim !== undefined ? `>{${h.rightTrim}}` : "";
+  // Use explicit trim if valid, otherwise default to anchor.length - 1
+  const anchorLen = h.rightAnchor.length;
+  const trimValue =
+    h.rightTrim !== undefined && h.rightTrim < anchorLen ? h.rightTrim : defaultTrim(anchorLen);
+  const trim = trimValue !== undefined ? `>{${trimValue}}` : "";
   return `^(${umiLabel}:N{${umiRange}})${h.leftAnchor}(${readLabel}:*)${h.rightAnchor}${trim}*`;
 }
 
@@ -69,24 +73,28 @@ export function reverseComplement(seq: string): string {
 
 // ─── Generate R2 from R1 ──────────────────────────────────────────────────────
 
+/** Default trim: allow all but 1 base to be trimmed from the right anchor. */
+export function defaultTrim(anchorLength: number): number | undefined {
+  return anchorLength > 1 ? anchorLength - 1 : undefined;
+}
+
 /**
  * Auto-generate an R2 half from R1:
  * - UMI range copied as-is
  * - leftAnchor  = reverse-complement of R1 rightAnchor
  * - rightAnchor = reverse-complement of R1 leftAnchor
- * - rightTrim   = 5 if rightAnchor length > 5, otherwise undefined
+ * - rightTrim   = rightAnchor.length - 1 (all but 1 base trimmable)
  */
 export function generateR2fromR1(r1: PatternHalf): PatternHalf {
   const leftAnchor = reverseComplement(r1.rightAnchor);
   const rightAnchor = reverseComplement(r1.leftAnchor);
-  const rightTrim = rightAnchor.length > 5 ? 5 : undefined;
   return {
     umiName: "UMI2",
     readName: "R2",
     umi: { ...r1.umi },
     leftAnchor,
     rightAnchor,
-    rightTrim,
+    rightTrim: defaultTrim(rightAnchor.length),
   };
 }
 

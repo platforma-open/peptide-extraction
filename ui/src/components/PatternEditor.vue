@@ -13,6 +13,7 @@ import {
   detectHomopolymers,
   detectMismatches,
   generateR2fromR1,
+  defaultTrim,
   parsePattern,
   validateAnchor,
   validateTrim,
@@ -58,9 +59,7 @@ const editorModeOptions: SimpleOption<EditorMode>[] = [
   { value: "build", text: "Build pattern" },
 ];
 // Auto-detect: default to "build" if pattern parses, "write" if it doesn't
-const editorMode = ref<EditorMode>(
-  app.model.data.pattern && !parsePattern(app.model.data.pattern) ? "write" : "build",
-);
+const editorMode = ref<EditorMode>("write");
 
 const readTab = ref<"r1" | "r2">("r1");
 
@@ -108,11 +107,9 @@ const patternParseError = computed(() => {
     : null;
 });
 
-const fieldsDisabled = computed(() => patternParseError.value !== null);
-
 // ── Helpers: fields ↔ PatternHalf ──────────────────────────────────────────
 
-/** Strict: returns null if any field is missing or invalid. Used for pattern assembly. */
+/** Strict: returns null if any field is missing or invalid. */
 function fieldsToHalf(f: HalfFields): PatternHalf | null {
   if (f.umiMin === undefined) return null;
   const leftAnchor = f.leftAnchor?.trim() ?? "";
@@ -129,6 +126,20 @@ function fieldsToHalf(f: HalfFields): PatternHalf | null {
     umi,
     leftAnchor,
     rightAnchor,
+    rightTrim: f.rightTrim,
+    umiName: f.umiName,
+    readName: f.readName,
+  };
+}
+
+/** Lenient: returns a half with whatever fields are available. Allows empty/invalid anchors.
+ *  Used for assembly and preview so the pattern always reflects the current field state. */
+function fieldsToHalfLenient(f: HalfFields): PatternHalf | null {
+  if (f.umiMin === undefined) return null;
+  return {
+    umi: { min: f.umiMin, max: f.umiMax ?? f.umiMin },
+    leftAnchor: f.leftAnchor?.trim() ?? "",
+    rightAnchor: f.rightAnchor?.trim() ?? "",
     rightTrim: f.rightTrim,
     umiName: f.umiName,
     readName: f.readName,
@@ -152,6 +163,7 @@ function setFieldsFromHalf(fields: HalfFields, h: PatternHalf) {
   fields.readName = h.readName;
   fields.leftAnchor = h.leftAnchor || undefined;
   fields.rightAnchor = h.rightAnchor || undefined;
+  // Preserve exactly what was parsed — default trim is only applied during Build mode assembly
   fields.rightTrim = h.rightTrim;
 }
 
@@ -174,7 +186,13 @@ watch(
       return;
     }
     const parsed = parsePattern(pattern);
-    if (!parsed) return;
+    if (!parsed) {
+      app.model.data.patternParts = undefined;
+      return;
+    }
+
+    // Keep patternParts in sync with the current pattern text
+    app.model.data.patternParts = parsed;
 
     setFieldsFromHalf(r1, parsed.r1);
 
@@ -201,47 +219,67 @@ function clearPattern() {
   app.model.data.patternParts = undefined;
 }
 
-// Fields + mode → main field + patternParts
-// Clears the pattern when fields are invalid (prevents stale patterns from being sent to workflow).
-// Fields themselves are never cleared — only the assembled pattern string.
-watch(
-  [r1, r2, () => app.model.data.r2Mode, () => app.model.data.r2UseWildcards],
-  () => {
-    if (fieldsDisabled.value) return;
-    const half1 = fieldsToHalf(r1);
-    if (!half1) {
-      clearPattern();
-      return;
-    }
+/** Reassemble the pattern from current field state and update the model. */
+function reassembleFromFields() {
+  const half1 = fieldsToHalfLenient(r1);
+  if (!half1) {
+    clearPattern();
+    return;
+  }
 
-    let parts: PatternParts;
-    if (isGenerateMode.value) {
-      const auto = autoR2.value;
-      if (!auto) {
-        clearPattern();
-        return;
-      }
-      parts = { r1: half1, r2: auto };
+  let parts: PatternParts;
+  if (isGenerateMode.value) {
+    const auto = autoR2.value;
+    if (!auto) {
+      parts = { r1: half1 };
     } else {
-      if (r2HasAnyContent.value) {
-        const half2 = fieldsToHalf(r2);
-        if (!half2) {
-          clearPattern();
-          return;
-        }
+      parts = { r1: half1, r2: auto };
+    }
+  } else {
+    if (r2HasAnyContent.value) {
+      const half2 = fieldsToHalfLenient(r2);
+      if (half2) {
         parts = { r1: half1, r2: half2 };
       } else {
         parts = { r1: half1 };
       }
+    } else {
+      parts = { r1: half1 };
     }
+  }
 
-    const assembled = assemblePattern(parts);
-    lastAssembled.value = assembled;
-    app.model.data.pattern = assembled;
-    app.model.data.patternParts = parts;
+  const assembled = assemblePattern(parts);
+  lastAssembled.value = assembled;
+  app.model.data.pattern = assembled;
+
+  // Re-parse the assembled pattern to get accurate parts (assembly may have applied default trims).
+  // Update fields to match so preview, patternParts, and Tag Pattern all agree.
+  const effectiveParts = parsePattern(assembled);
+  app.model.data.patternParts = effectiveParts ?? parts;
+  if (effectiveParts) {
+    r1.rightTrim = effectiveParts.r1.rightTrim;
+    if (effectiveParts.r2) r2.rightTrim = effectiveParts.r2.rightTrim;
+  }
+}
+
+// Fields → pattern: only in Build mode. In Write mode, the raw text is the source of truth.
+watch(
+  [r1, r2, () => app.model.data.r2Mode, () => app.model.data.r2UseWildcards],
+  () => {
+    if (editorMode.value === "build") reassembleFromFields();
   },
   { deep: true },
 );
+
+// Switching to Build mode: only reassemble if the current pattern is invalid.
+// Valid patterns (even without trim) are left as-is — the user's text is the source of truth.
+watch(editorMode, (mode) => {
+  if (mode === "build" && patternParseError.value) {
+    r1.rightTrim = undefined;
+    r2.rightTrim = undefined;
+    reassembleFromFields();
+  }
+});
 
 // Generate mode: keep r2Fields in sync with autoR2 (display only)
 watch(
@@ -305,7 +343,7 @@ function buildAnchorSegments(
 }
 
 const previewSegments = computed((): Segment[] => {
-  const half1 = fieldsToHalf(r1);
+  const half1 = fieldsToHalfLenient(r1);
   if (!half1) return [];
 
   const useWildcards = app.model.data.r2UseWildcards ?? true;
@@ -318,7 +356,7 @@ const previewSegments = computed((): Segment[] => {
   if (isGenerateMode.value) {
     half2 = autoR2.value;
   } else {
-    half2 = r2HasAnyContent.value ? fieldsToHalf(r2) : null;
+    half2 = r2HasAnyContent.value ? fieldsToHalfLenient(r2) : null;
   }
 
   // Mismatch indices (manual mode only, mirrored to R1)
@@ -442,7 +480,6 @@ const previewSegments = computed((): Segment[] => {
           :min-value="1"
           :required="true"
           :error-message="r1Errors.umi ?? undefined"
-          :disabled="fieldsDisabled"
         >
           <template #tooltip>Length range for the random UMI barcode sequence</template>
         </PlNumberField>
@@ -451,7 +488,6 @@ const previewSegments = computed((): Segment[] => {
           label="UMI max length"
           :min-value="r1.umiMin ?? 1"
           :clearable="true"
-          :disabled="fieldsDisabled"
         />
       </div>
       <PlTextField
@@ -460,7 +496,6 @@ const previewSegments = computed((): Segment[] => {
         placeholder="e.g. gttcctttctatgcggcccagcc"
         :required="true"
         :error="r1Errors.leftAnchor ?? undefined"
-        :disabled="fieldsDisabled"
         @update:model-value="(v) => (r1.leftAnchor = v || undefined)"
       >
         <template #tooltip>
@@ -473,7 +508,6 @@ const previewSegments = computed((): Segment[] => {
         placeholder="e.g. gcggccgcacatcatcatcac"
         :required="true"
         :error="r1Errors.rightAnchor ?? undefined"
-        :disabled="fieldsDisabled"
         @update:model-value="(v) => (r1.rightAnchor = v || undefined)"
       >
         <template #tooltip>
@@ -486,7 +520,7 @@ const previewSegments = computed((): Segment[] => {
     <template v-if="readTab === 'r2'">
       <PlCheckbox
         :model-value="isGenerateMode"
-        :disabled="fieldsDisabled || !autoR2"
+        :disabled="!autoR2"
         @update:model-value="(v) => handleModeChange(v ? 'generate' : 'manual')"
       >
         Auto-generate from R1
@@ -499,7 +533,6 @@ const previewSegments = computed((): Segment[] => {
             :min-value="1"
             :required="true"
             :error-message="r2Errors.umi ?? undefined"
-            :disabled="fieldsDisabled"
           >
             <template #tooltip>Length range for the random UMI barcode sequence</template>
           </PlNumberField>
@@ -508,7 +541,6 @@ const previewSegments = computed((): Segment[] => {
             label="UMI max length"
             :min-value="r2.umiMin ?? 1"
             :clearable="true"
-            :disabled="fieldsDisabled"
           />
         </div>
         <PlTextField
@@ -517,7 +549,6 @@ const previewSegments = computed((): Segment[] => {
           placeholder="e.g. tgagtttttgttctgcggcc"
           :required="true"
           :error="r2Errors.leftAnchor ?? undefined"
-          :disabled="fieldsDisabled"
           @update:model-value="(v) => (r2.leftAnchor = v || undefined)"
         >
           <template #tooltip>
@@ -530,7 +561,6 @@ const previewSegments = computed((): Segment[] => {
           placeholder="e.g. ggccatggccgcatagaaagg"
           :required="true"
           :error="r2Errors.rightAnchor ?? undefined"
-          :disabled="fieldsDisabled"
           @update:model-value="(v) => (r2.rightAnchor = v || undefined)"
         >
           <template #tooltip>
