@@ -4,6 +4,8 @@ import { computed } from "vue";
 import type { SampleComposition } from "./aaComposition";
 import { parseCompositionNdjson } from "./aaComposition";
 import { useApp } from "./app";
+import type { FunnelEntry } from "./pipelineFunnel";
+import { parseFunnelNdjson } from "./pipelineFunnel";
 import type { QcCheckResult } from "./qcChecks";
 import { parseQcChecksNdjson } from "./qcChecks";
 
@@ -15,6 +17,7 @@ export type SampleResult = {
   progress: string;
   aaComposition?: SampleComposition;
   qcChecks?: QcCheckResult[];
+  pipelineFunnel?: FunnelEntry[];
 };
 
 /** Per-sample AA composition, parsed once and cached until the file changes */
@@ -33,6 +36,16 @@ const qcChecksMap = computed<Map<string, QcCheckResult[]> | undefined>(() => {
   const qcBlob = app.model.outputs.qcChecks;
   const content = qcBlob ? reactiveFileContent.getContentString(qcBlob.handle)?.value : undefined;
   return content ? parseQcChecksNdjson(content) : undefined;
+});
+
+/** Per-sample pipeline funnel data */
+const funnelMap = computed<Map<string, FunnelEntry[]> | undefined>(() => {
+  const app = useApp();
+  const funnelBlob = app.model.outputs.pipelineFunnel;
+  const content = funnelBlob
+    ? reactiveFileContent.getContentString(funnelBlob.handle)?.value
+    : undefined;
+  return content ? parseFunnelNdjson(content) : undefined;
 });
 
 export const sampleResults = computed<SampleResult[] | undefined>(() => {
@@ -120,6 +133,7 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
         progress: progressStr,
         aaComposition: compositionMap.value?.get(sampleId),
         qcChecks: qcChecksMap.value?.get(sampleId),
+        pipelineFunnel: funnelMap.value?.get(sampleId),
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));

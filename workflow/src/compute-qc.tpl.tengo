@@ -16,6 +16,7 @@ self.awaitState("InputsLocked")
 self.awaitState("propertiesFile", "ResourceReady")
 self.awaitState("peptideTablesData", "ResourceReady")
 self.awaitState("qcChecksData", "ResourceReady")
+self.awaitState("pipelineFunnelData", "ResourceReady")
 
 aminoAcids := ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L",
 	"M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
@@ -160,6 +161,26 @@ self.body(func(inputs) {
 		qcChecksFrames = append(qcChecksFrames, qcDf)
 	}
 
+	// Merge per-sample pipeline funnel data
+	pipelineFunnelData := inputs.pipelineFunnelData
+	funnelMap := pipelineFunnelData.inputs()
+	funnelFrames := []
+	for sKey in maps.getKeys(funnelMap) {
+		funnelFile := funnelMap[sKey]
+		key := json.decode(sKey)
+		sampleId := key[0]
+
+		funnelDf := wf.frame({
+			file: funnelFile,
+			xsvType: "ndjson"
+		}, {
+			id: "funnel_" + sampleId
+		})
+
+		funnelDf = funnelDf.withColumns(pt.lit(sampleId).alias("sampleId"))
+		funnelFrames = append(funnelFrames, funnelDf)
+	}
+
 	// Sort all outputs by sampleId for deterministic file content (stable CIDs across re-runs)
 	allQc.sort(["sampleId"]).save("qc.tsv")
 	allComp.sort(["sampleId"]).save("aa-composition.ndjson")
@@ -174,11 +195,22 @@ self.body(func(inputs) {
 		allQcChecks.sort(["sampleId", "checkType"]).save("qc-checks.ndjson")
 	}
 
+	if len(funnelFrames) > 0 {
+		allFunnel := undefined
+		if len(funnelFrames) == 1 {
+			allFunnel = funnelFrames[0]
+		} else {
+			allFunnel = pt.concat(funnelFrames)
+		}
+		allFunnel.sort(["sampleId"]).save("pipeline-funnel.ndjson")
+	}
+
 	result := wf.run()
 
 	return {
 		qcTable: result.getFile("qc.tsv"),
 		aaComposition: result.getFile("aa-composition.ndjson"),
-		qcChecks: result.getFile("qc-checks.ndjson")
+		qcChecks: result.getFile("qc-checks.ndjson"),
+		pipelineFunnel: result.getFile("pipeline-funnel.ndjson")
 	}
 })

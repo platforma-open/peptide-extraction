@@ -6,6 +6,7 @@ import { computed, ref } from "vue";
 import { useApp } from "../app";
 import { sampleResults } from "../results";
 import AaCompositionChart from "../components/AaCompositionChart.vue";
+import PipelineFunnelChart from "../components/PipelineFunnelChart.vue";
 import QcSection from "../components/QcSection.vue";
 
 const sampleId = defineModel<string | undefined>();
@@ -47,6 +48,7 @@ const currentSample = computed(() => {
   <PlBtnGroup v-model="currentTab" :options="tabOptions" />
 
   <template v-if="currentTab === 'visualReport'">
+    <PipelineFunnelChart :funnel="currentSample?.pipelineFunnel" />
     <AaCompositionChart :composition="currentSample?.aaComposition" />
   </template>
 

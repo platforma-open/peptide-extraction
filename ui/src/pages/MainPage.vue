@@ -22,7 +22,9 @@ import { computed, reactive, shallowRef, watch, watchEffect } from "vue";
 import { useApp } from "../app";
 import type { SampleComposition } from "../aaComposition";
 import AaCompositionHeatmapCell from "../components/AaCompositionHeatmapCell.vue";
+import PipelineFunnelCell from "../components/PipelineFunnelCell.vue";
 import { parseProgressString } from "../parseProgress";
+import type { FunnelEntry } from "../pipelineFunnel";
 import type { QcStatus } from "../qcChecks";
 import { worstStatus } from "../qcChecks";
 import type { SampleResult } from "../results";
@@ -150,6 +152,19 @@ const columnDefs: ColDef<SampleResult>[] = [
         params: { type: status },
       };
     },
+  }),
+  createAgGridColDef<SampleResult, FunnelEntry[] | undefined>({
+    colId: "pipelineFunnel",
+    headerName: "Read Loss",
+    headerComponentParams: { type: "Text" } satisfies PlAgHeaderComponentParams,
+    flex: 1,
+    cellStyle: {
+      "--ag-cell-horizontal-padding": "4px",
+    },
+    cellRendererSelector: (cellData) => ({
+      component: PipelineFunnelCell,
+      params: { value: cellData.data?.pipelineFunnel },
+    }),
   }),
   createAgGridColDef<SampleResult, SampleComposition | undefined>({
     colId: "aaComposition",

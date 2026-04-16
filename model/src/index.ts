@@ -154,6 +154,12 @@ export const platforma = BlockModelV3.create(dataModel)
       ?.getFileHandle();
   })
 
+  .output("pipelineFunnel", (ctx) => {
+    return ctx.outputs
+      ?.resolve({ field: "pipelineFunnel", assertFieldType: "Input", allowPermanentAbsence: true })
+      ?.getFileHandle();
+  })
+
   .outputWithStatus("peptideTable", (ctx) => {
     const pCols = ctx.outputs?.resolve("peptides")?.getPColumns();
     if (pCols === undefined) {
