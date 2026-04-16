@@ -132,10 +132,24 @@ wf.body(func(args) {
 		path: ["pipelineFunnel"]
 	}
 
+	distributionsFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/distributionsFile",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "distributionsFile",
+		path: ["distributions"]
+	}
+
 	perSampleResults := pframes.processColumn(
 		{ spec: inputSpec, data: inputData },
 		mitoolPipelineTpl,
-		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput, qcChecksFileOutput, pipelineFunnelFileOutput],
+		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput, qcChecksFileOutput, pipelineFunnelFileOutput, distributionsFileOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sequencing/lane",
@@ -245,13 +259,15 @@ wf.body(func(args) {
 		peptideTablesData: perSampleResults.outputData("peptideTableFile"),
 		propertiesFile: aggregateResults.outputData("propertiesFile"),
 		qcChecksData: perSampleResults.outputData("qcChecksFile"),
-		pipelineFunnelData: perSampleResults.outputData("pipelineFunnelFile")
+		pipelineFunnelData: perSampleResults.outputData("pipelineFunnelFile"),
+		distributionsData: perSampleResults.outputData("distributionsFile")
 	})
 
 	qcTsvFile := qcRun.output("qcTable")
 	aaCompositionFile := qcRun.output("aaComposition")
 	qcChecksFile := qcRun.output("qcChecks")
 	pipelineFunnelFile := qcRun.output("pipelineFunnel")
+	distributionsFile := qcRun.output("distributions")
 
 	qcColumns := xsv.importFile(
 		qcTsvFile,
@@ -290,7 +306,8 @@ wf.body(func(args) {
 		stepLogs: perSampleResults.outputData("stepLogs"),
 		aaComposition: file.exportFile(aaCompositionFile),
 		qcChecks: file.exportFile(qcChecksFile),
-		pipelineFunnel: file.exportFile(pipelineFunnelFile)
+		pipelineFunnel: file.exportFile(pipelineFunnelFile),
+		distributions: file.exportFile(distributionsFile)
 	}
 
 	exports := {

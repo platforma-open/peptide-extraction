@@ -1,12 +1,14 @@
-"""Extract QC check metrics and pipeline funnel data from mitool reports.
+"""Extract QC check metrics, pipeline funnel, and distributions from mitool reports.
 
 Parses the plain-text reports from parse, refine, and consensus steps.
-Outputs two NDJSON files:
+Outputs three NDJSON files:
   1. QC checks with OK/WARN/ALERT status
   2. Pipeline funnel with read counts at each stage
+  3. Distributions (R1/R2 lengths, UMI lengths, reads per UMI)
 
 Usage:
-  python qc_checks.py <parse_report> <refine_report> <consensus_report> <qc_output.ndjson> <funnel_output.ndjson>
+  python qc_checks.py <parse_report> <refine_report> <consensus_report> \
+      <qc_output.ndjson> <funnel_output.ndjson> <dist_output.ndjson>
 """
 
 import json
@@ -196,16 +198,74 @@ def build_funnel(parse_text: str, refine_text: str, consensus_text: str) -> list
     return funnel
 
 
+# ── Distributions ─────────────────────────────────────────────────────────────
+
+def _parse_distribution(text: str, header: str) -> list[dict]:
+    """Parse a distribution section from a mitool report.
+    Format:  <bin>: + <count> (<pct>%) = <cumulative> (<cum_pct>%)"""
+    rows = []
+    bin_re = re.compile(r"^\s+([\d~]+):\s*\+\s*(\d+)\s*\(([\d.]+)%\)")
+    # Find the section starting with the header
+    start = text.find(header)
+    if start == -1:
+        return rows
+    section = text[start + len(header):]
+    for line in section.split("\n"):
+        if not line.strip():
+            continue
+        m = bin_re.match(line)
+        if m:
+            rows.append({
+                "bin": m.group(1),
+                "count": int(m.group(2)),
+                "pct": float(m.group(3)),
+            })
+        elif rows:
+            # Non-matching line after we have data = next section header, stop
+            break
+    return rows
+
+
+def build_distributions(parse_text: str, consensus_text: str) -> list[dict]:
+    """Extract distributions as flat NDJSON rows: {dist, bin, count, pct}."""
+    entries: list[dict] = []
+
+    dist_map = {
+        # From parse report
+        "r1_length": ("R1 length:", parse_text),
+        "r2_length": ("R2 length:", parse_text),
+        "umi_length": ("UMI length:", parse_text),
+        "umi2_length": ("UMI2 length:", parse_text),
+        # From consensus report
+        "consensus_r1_length": ("Length of R1:", consensus_text),
+        "consensus_r2_length": ("Length of R2:", consensus_text),
+        "reads_per_contig": ("Distribution of reads in contigs:", consensus_text),
+    }
+
+    for dist_name, (header, text) in dist_map.items():
+        rows = _parse_distribution(text, header)
+        for row in rows:
+            entries.append({
+                "dist": dist_name,
+                "bin": row["bin"],
+                "count": row["count"],
+                "pct": row["pct"],
+            })
+
+    return entries
+
+
 def main():
-    if len(sys.argv) != 6:
+    if len(sys.argv) != 7:
         print(
             f"Usage: {sys.argv[0]} <parse_report> <refine_report> <consensus_report> "
-            "<qc_output.ndjson> <funnel_output.ndjson>",
+            "<qc_output.ndjson> <funnel_output.ndjson> <dist_output.ndjson>",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    parse_path, refine_path, consensus_path, qc_output_path, funnel_output_path = sys.argv[1:6]
+    (parse_path, refine_path, consensus_path,
+     qc_output_path, funnel_output_path, dist_output_path) = sys.argv[1:7]
 
     with open(parse_path) as f:
         parse_text = f.read()
@@ -229,6 +289,13 @@ def main():
 
     with open(funnel_output_path, "w") as f:
         for entry in funnel:
+            f.write(json.dumps(entry) + "\n")
+
+    # Distributions
+    distributions = build_distributions(parse_text, consensus_text)
+
+    with open(dist_output_path, "w") as f:
+        for entry in distributions:
             f.write(json.dumps(entry) + "\n")
 
 

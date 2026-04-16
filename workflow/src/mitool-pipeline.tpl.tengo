@@ -15,7 +15,7 @@ units := import("@platforma-sdk/workflow-tengo:units")
 
 json := import("json")
 
-self.defineOutputs("tsv", "stepLogs", "qcChecks", "pipelineFunnel")
+self.defineOutputs("tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions")
 
 mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
 qcChecksSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:qc-checks")
@@ -363,17 +363,20 @@ self.body(func(inputs) {
 		arg("consensus_report.txt").
 		arg("qc_checks.ndjson").
 		arg("pipeline_funnel.ndjson").
+		arg("distributions.ndjson").
 		addFile("parse_report.txt", parseReport).
 		addFile("refine_report.txt", refineReport).
 		addFile("consensus_report.txt", consensusReport).
 		saveFile("qc_checks.ndjson").
 		saveFile("pipeline_funnel.ndjson").
+		saveFile("distributions.ndjson").
 		run()
 
 	return {
 		tsv: peptidesTsv,
 		stepLogs: stepLogs.build(),
 		qcChecks: qcChecksCmd.getFile("qc_checks.ndjson"),
-		pipelineFunnel: qcChecksCmd.getFile("pipeline_funnel.ndjson")
+		pipelineFunnel: qcChecksCmd.getFile("pipeline_funnel.ndjson"),
+		distributions: qcChecksCmd.getFile("distributions.ndjson")
 	}
 })

@@ -17,6 +17,7 @@ self.awaitState("propertiesFile", "ResourceReady")
 self.awaitState("peptideTablesData", "ResourceReady")
 self.awaitState("qcChecksData", "ResourceReady")
 self.awaitState("pipelineFunnelData", "ResourceReady")
+self.awaitState("distributionsData", "ResourceReady")
 
 aminoAcids := ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L",
 	"M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
@@ -205,12 +206,43 @@ self.body(func(inputs) {
 		allFunnel.sort(["sampleId"]).save("pipeline-funnel.ndjson")
 	}
 
+	// Merge per-sample distribution data
+	distData := inputs.distributionsData
+	distMap := distData.inputs()
+	distFrames := []
+	for sKey in maps.getKeys(distMap) {
+		distFile := distMap[sKey]
+		key := json.decode(sKey)
+		sampleId := key[0]
+
+		distDf := wf.frame({
+			file: distFile,
+			xsvType: "ndjson"
+		}, {
+			id: "dist_" + sampleId
+		})
+
+		distDf = distDf.withColumns(pt.lit(sampleId).alias("sampleId"))
+		distFrames = append(distFrames, distDf)
+	}
+
+	if len(distFrames) > 0 {
+		allDist := undefined
+		if len(distFrames) == 1 {
+			allDist = distFrames[0]
+		} else {
+			allDist = pt.concat(distFrames)
+		}
+		allDist.sort(["sampleId", "dist"]).save("distributions.ndjson")
+	}
+
 	result := wf.run()
 
 	return {
 		qcTable: result.getFile("qc.tsv"),
 		aaComposition: result.getFile("aa-composition.ndjson"),
 		qcChecks: result.getFile("qc-checks.ndjson"),
-		pipelineFunnel: result.getFile("pipeline-funnel.ndjson")
+		pipelineFunnel: result.getFile("pipeline-funnel.ndjson"),
+		distributions: result.getFile("distributions.ndjson")
 	}
 })

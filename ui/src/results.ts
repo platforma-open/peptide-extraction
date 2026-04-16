@@ -4,6 +4,8 @@ import { computed } from "vue";
 import type { SampleComposition } from "./aaComposition";
 import { parseCompositionNdjson } from "./aaComposition";
 import { useApp } from "./app";
+import type { SampleDistributions } from "./distributions";
+import { parseDistributionsNdjson } from "./distributions";
 import type { FunnelEntry } from "./pipelineFunnel";
 import { parseFunnelNdjson } from "./pipelineFunnel";
 import type { QcCheckResult } from "./qcChecks";
@@ -18,6 +20,7 @@ export type SampleResult = {
   aaComposition?: SampleComposition;
   qcChecks?: QcCheckResult[];
   pipelineFunnel?: FunnelEntry[];
+  distributions?: SampleDistributions;
 };
 
 /** Per-sample AA composition, parsed once and cached until the file changes */
@@ -36,6 +39,16 @@ const qcChecksMap = computed<Map<string, QcCheckResult[]> | undefined>(() => {
   const qcBlob = app.model.outputs.qcChecks;
   const content = qcBlob ? reactiveFileContent.getContentString(qcBlob.handle)?.value : undefined;
   return content ? parseQcChecksNdjson(content) : undefined;
+});
+
+/** Per-sample distributions (R1/R2 lengths, UMI lengths, reads per contig) */
+const distributionsMap = computed<Map<string, SampleDistributions> | undefined>(() => {
+  const app = useApp();
+  const distBlob = app.model.outputs.distributions;
+  const content = distBlob
+    ? reactiveFileContent.getContentString(distBlob.handle)?.value
+    : undefined;
+  return content ? parseDistributionsNdjson(content) : undefined;
 });
 
 /** Per-sample pipeline funnel data */
@@ -134,6 +147,7 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
         aaComposition: compositionMap.value?.get(sampleId),
         qcChecks: qcChecksMap.value?.get(sampleId),
         pipelineFunnel: funnelMap.value?.get(sampleId),
+        distributions: distributionsMap.value?.get(sampleId),
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));
