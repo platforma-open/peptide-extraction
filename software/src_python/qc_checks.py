@@ -202,14 +202,18 @@ def build_funnel(parse_text: str, refine_text: str, consensus_text: str) -> list
 
 def _parse_distribution(text: str, header: str) -> list[dict]:
     """Parse a distribution section from a mitool report.
-    Format:  <bin>: + <count> (<pct>%) = <cumulative> (<cum_pct>%)"""
+    Format:  <bin>: + <count> (<pct>%) = <cumulative> (<cum_pct>%)
+    Returns empty if the tag has a fixed length (single value on the header line)."""
     rows = []
     bin_re = re.compile(r"^\s+([\d~]+):\s*\+\s*(\d+)\s*\(([\d.]+)%\)")
-    # Find the section starting with the header
     start = text.find(header)
     if start == -1:
         return rows
     section = text[start + len(header):]
+    # Fixed value on the header line (e.g., "UMI length: 15") — single-bin distribution
+    first_line = section.split("\n")[0].strip()
+    if first_line and re.match(r"^\d+$", first_line):
+        return [{"bin": first_line, "count": 0, "pct": 100.0}]
     for line in section.split("\n"):
         if not line.strip():
             continue
