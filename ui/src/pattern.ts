@@ -102,15 +102,17 @@ export function generateR2fromR1(r1: PatternHalf): PatternHalf {
 
 export type HomopolymerRun = { start: number; end: number; base: string };
 
-/** Find all non-terminal runs of 5+ identical non-N bases (case-insensitive). */
-export function detectHomopolymers(seq: string): HomopolymerRun[] {
+/** Find runs of 5+ identical non-N bases (case-insensitive).
+ *  By default excludes terminal runs. Set allowTrailing=true to include runs at the end. */
+export function detectHomopolymers(seq: string, allowTrailing = false): HomopolymerRun[] {
   const runs: HomopolymerRun[] = [];
   let i = 0;
   while (i < seq.length) {
     const base = seq[i].toLowerCase();
     let j = i + 1;
     while (j < seq.length && seq[j].toLowerCase() === base) j++;
-    if (j - i >= 5 && base !== "n" && i > 0 && j < seq.length)
+    const isTerminal = i === 0 || j === seq.length;
+    if (j - i >= 5 && base !== "n" && (!isTerminal || (allowTrailing && j === seq.length)))
       runs.push({ start: i, end: j, base });
     i = j;
   }

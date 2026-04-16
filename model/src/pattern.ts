@@ -38,6 +38,47 @@ function parseHalf(s: string): PatternHalf | null {
   };
 }
 
+/** Replace homopolymer runs (5+ identical bases, excluding N) with lowercase n wildcards.
+ *  Excludes terminal runs unless allowTrailing is true (for right anchors only). */
+function replaceHomopolymers(anchor: string, allowTrailing = false): string {
+  const len = anchor.length;
+  return anchor.replace(/([acgtACGTmkrywsMKRYWS])\1{4,}/gi, (match, _base, offset) => {
+    const atStart = offset === 0;
+    const atEnd = offset + match.length === len;
+    if (atStart) return match; // never replace leading runs
+    if (atEnd && !allowTrailing) return match; // skip trailing unless allowed
+    return "n".repeat(match.length);
+  });
+}
+
+function assembleHalf(h: PatternHalf): string {
+  const umiRange = h.umi.min === h.umi.max ? `${h.umi.min}` : `${h.umi.min}:${h.umi.max}`;
+  const trim = h.rightTrim !== undefined ? `>{${h.rightTrim}}` : "";
+  return `^(${h.umiName}:N{${umiRange}})${h.leftAnchor}(${h.readName}:*)${h.rightAnchor}${trim}*`;
+}
+
+/** Apply wildcard replacement to homopolymer runs in all anchors. Returns the modified pattern. */
+export function applyWildcards(pattern: string): string {
+  const parts = parsePattern(pattern);
+  if (!parts) return pattern;
+
+  const r1: PatternHalf = {
+    ...parts.r1,
+    leftAnchor: replaceHomopolymers(parts.r1.leftAnchor),
+    rightAnchor: replaceHomopolymers(parts.r1.rightAnchor, true),
+  };
+  const r1Str = assembleHalf(r1);
+
+  if (!parts.r2) return r1Str;
+
+  const r2: PatternHalf = {
+    ...parts.r2,
+    leftAnchor: replaceHomopolymers(parts.r2.leftAnchor),
+    rightAnchor: replaceHomopolymers(parts.r2.rightAnchor, true),
+  };
+  return `${r1Str}\\${assembleHalf(r2)}`;
+}
+
 /** Parse a full pattern string into parts, or return null if unparseable. */
 export function parsePattern(str: string): PatternParts | null {
   const sep = str.indexOf("\\");

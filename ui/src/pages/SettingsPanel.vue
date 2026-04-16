@@ -60,8 +60,8 @@ const autoR1OnlyAssembly = computed({
 
     <div style="display: flex; align-items: center; gap: 4px">
       <PlCheckbox
-        :model-value="app.model.data.r2UseWildcards ?? true"
-        @update:model-value="(v) => (app.model.data.r2UseWildcards = v)"
+        :model-value="app.model.data.useWildcards ?? true"
+        @update:model-value="(v) => (app.model.data.useWildcards = v)"
       >
         Replace pattern homopolymers with wildcards
       </PlCheckbox>

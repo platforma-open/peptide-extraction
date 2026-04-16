@@ -148,7 +148,7 @@ wf.body(func(args) {
 			}],
 
 			extra: {
-				pattern: args.pattern,
+				pattern: args.effectivePattern,
 				errorBudget: args.errorBudget,
 				maxIndels: args.maxIndels,
 				minReadsPerConsensus: args.minReadsPerConsensus,

@@ -7,7 +7,7 @@ import {
   isPColumnSpec,
   parseResourceMap,
 } from "@platforma-sdk/model";
-import { parsePattern } from "./pattern";
+import { applyWildcards, parsePattern } from "./pattern";
 import type { PatternParts } from "./pattern";
 
 export type { UmiRange, PatternHalf, PatternParts } from "./pattern";
@@ -20,7 +20,7 @@ export type BlockData = {
   pattern?: string;
   patternParts?: PatternParts;
   r2Mode?: "generate" | "manual";
-  r2UseWildcards?: boolean;
+  useWildcards?: boolean;
   minReadsPerConsensus?: number;
   errorBudget?: number;
   maxIndels?: number;
@@ -63,7 +63,7 @@ const dataModel = new DataModelBuilder()
     qcTableState: createPlDataTableStateV2(),
     resultsTableState: createPlDataTableStateV2(),
     r2Mode: "generate" as const,
-    r2UseWildcards: true,
+    useWildcards: true,
   }));
 
 export const platforma = BlockModelV3.create(dataModel)
@@ -196,11 +196,13 @@ export const platforma = BlockModelV3.create(dataModel)
       throw new Error("Memory per process must be at least 1 GB");
     if (data.perProcessCPUs !== undefined && data.perProcessCPUs < 1)
       throw new Error("CPUs per process must be at least 1");
+    const useWildcards = data.useWildcards ?? true;
     return {
       input: data.input,
       pattern: data.pattern,
+      effectivePattern: useWildcards ? applyWildcards(data.pattern!) : data.pattern,
       patternParts,
-      r2UseWildcards: data.r2UseWildcards ?? true,
+      useWildcards: useWildcards,
       minReadsPerConsensus: data.minReadsPerConsensus,
       errorBudget: data.errorBudget,
       maxIndels: data.maxIndels,

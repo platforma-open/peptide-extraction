@@ -64,7 +64,7 @@ const editorMode = ref<EditorMode>("write");
 const readTab = ref<"r1" | "r2">("r1");
 
 // Auto-generated R2 from R1. Wildcards are NOT applied to the pattern string —
-// r2UseWildcards only controls preview highlighting and is passed to the backend.
+// useWildcards only controls preview highlighting and is passed to the backend.
 // Right anchor is required: it becomes R2's left anchor via reverse complement.
 const autoR2 = computed((): PatternHalf | null => {
   if (!r1.rightAnchor) return null;
@@ -264,7 +264,7 @@ function reassembleFromFields() {
 
 // Fields → pattern: only in Build mode. In Write mode, the raw text is the source of truth.
 watch(
-  [r1, r2, () => app.model.data.r2Mode, () => app.model.data.r2UseWildcards],
+  [r1, r2, () => app.model.data.r2Mode, () => app.model.data.useWildcards],
   () => {
     if (editorMode.value === "build") reassembleFromFields();
   },
@@ -346,7 +346,7 @@ const previewSegments = computed((): Segment[] => {
   const half1 = fieldsToHalfLenient(r1);
   if (!half1) return [];
 
-  const useWildcards = app.model.data.r2UseWildcards ?? true;
+  const useWildcards = app.model.data.useWildcards ?? true;
   const { min: r1min, max: r1max } = half1.umi;
   const r1UmiRange = r1min === r1max ? `${r1min}` : `${r1min}:${r1max}`;
   const r1Trim = half1.rightTrim !== undefined ? `>{${half1.rightTrim}}` : "";
@@ -387,7 +387,7 @@ const previewSegments = computed((): Segment[] => {
   // Homopolymer runs (when wildcards enabled)
   const empty: HomopolymerRun[] = [];
   const r1LeftHomo = useWildcards ? detectHomopolymers(half1.leftAnchor) : empty;
-  const r1RightHomo = useWildcards ? detectHomopolymers(half1.rightAnchor) : empty;
+  const r1RightHomo = useWildcards ? detectHomopolymers(half1.rightAnchor, true) : empty;
 
   const r1Part: Segment[] = [
     { text: `^(${half1.umiName ?? "UMI"}:N{${r1UmiRange}})` },
@@ -400,7 +400,7 @@ const previewSegments = computed((): Segment[] => {
   if (!half2) return r1Part;
 
   const r2LeftHomo = useWildcards ? detectHomopolymers(half2.leftAnchor) : empty;
-  const r2RightHomo = useWildcards ? detectHomopolymers(half2.rightAnchor) : empty;
+  const r2RightHomo = useWildcards ? detectHomopolymers(half2.rightAnchor, true) : empty;
   const { min: r2min, max: r2max } = half2.umi;
   const r2UmiRange = r2min === r2max ? `${r2min}` : `${r2min}:${r2max}`;
   const r2Trim = half2.rightTrim !== undefined ? `>{${half2.rightTrim}}` : "";
