@@ -33,11 +33,11 @@ export const qcCheckDescriptions: Record<string, string> = {
   ReadsPerUMI:
     "Average number of sequencing reads per unique molecular identifier. Below ~4 reads/UMI, error correction during consensus has limited statistical power. Below ~2, most molecules are singletons that get dropped. May indicate under-sequencing or excessive read loss at parse.",
   SingletonsDropped:
-    "Molecules with only 1 read, removed by the minReadsPerConsensus threshold (default: 2). These cannot be error-corrected. High singleton rates compound with low parse rates \u2014 if both are bad, final consensus count will be very low.",
+    "UMI groups containing only a single read, removed by the minReadsPerConsensus threshold (default: 2). Consensus assembly requires multiple reads from the same molecule to correct sequencing errors by majority vote \u2014 with only one read, errors cannot be distinguished from real sequence. High singleton rates often result from insufficient sequencing depth or excessive read loss during parsing. Setting minReadsPerConsensus to 1 retains singletons at the risk of incorporating uncorrected sequencing errors into the final consensus.",
   AssemblyDiscardRate:
-    "Reads within a UMI group that disagree with the consensus and are discarded. High rates (>15%) typically indicate R2 truncation from long peptide inserts approaching the read length limit. Check R2 length distributions. R1-only assembly may recover these reads.",
+    "Reads within a UMI group that could not be incorporated into the consensus sequence. This can happen because they differ in length from other reads in the group (e.g., R2 truncation from long peptide inserts approaching the read length limit), or because of too many sequencing errors. High rates (>15%) might indicate R2 truncation, which can be assessed by looking at R2 length distributions. R1-only assembly may recover these reads, but at the cost of losing the independent R2 consensus \u2014 error correction relies solely on R1 depth.",
   FinalConsensusCount:
-    "Total usable molecules after UMI deduplication and quality filtering. Depends on the experiment, but >100K is comfortable for enrichment analysis across selection rounds. Below 50K limits statistical power for differential abundance.",
+    "Number of consensus sequences produced after UMI deduplication, singleton removal, and assembly. Each consensus represents one deduplicated molecule. The required count depends on library complexity and experimental design \u2014 enrichment analysis across multiple selection rounds typically needs >100K for robust statistics, while smaller focused libraries may work with less. Counts below 50K should be investigated, as they may indicate issues with parse rate, sequencing depth, or library preparation.",
 };
 
 /** Parse merged QC checks NDJSON into a map keyed by sampleId */
