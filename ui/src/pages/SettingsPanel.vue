@@ -75,6 +75,21 @@ const autoR1OnlyAssembly = computed({
       </PlTooltip>
     </div>
 
+    <div style="display: flex; align-items: center; gap: 4px">
+      <PlCheckbox
+        :model-value="app.model.data.filterInvalidPeptides ?? true"
+        @update:model-value="(v) => (app.model.data.filterInvalidPeptides = v)"
+      >
+        Drop peptides with early stop or trailing nucleotides
+      </PlCheckbox>
+      <PlTooltip class="info">
+        <template #tooltip>
+          Remove peptides whose nucleotide sequence contains an internal stop codon or whose length
+          is not a multiple of three.
+        </template>
+      </PlTooltip>
+    </div>
+
     <!-- @TODO: Uncomment this when we have a way to test the R1-only assembly fallback -->
     <!-- <PlCheckbox v-model="autoR1OnlyAssembly">
       Auto R1-only assembly

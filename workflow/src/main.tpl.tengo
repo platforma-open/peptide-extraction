@@ -17,6 +17,7 @@ times := import("times")
 mitoolPipelineTpl := assets.importTemplate(":mitool-pipeline")
 aggregatePeptidesTpl := assets.importTemplate(":aggregate-peptides")
 computeQcTpl := assets.importTemplate(":compute-qc")
+filterPeptidesTpl := assets.importTemplate(":filter-peptides")
 columnSpecs := import(":column-specs")
 
 wf.prepare(func(args) {
@@ -277,7 +278,7 @@ wf.body(func(args) {
 				column: "sampleId",
 				spec: sampleIdAxisSpec
 			}],
-			columns: columnSpecs.columnsQc,
+			columns: columnSpecs.columnsQcFn(args.filterInvalidPeptides),
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		},
@@ -294,10 +295,62 @@ wf.body(func(args) {
 	}
 	qcPf := qcPfBuilder.build()
 
-	// Build pFrame from per-sample Xsv + aggregated Xsv (composition excluded — for future plots only)
+	// Build pFrame from per-sample Xsv + aggregated Xsv (composition excluded — for future plots only).
+	// When filterInvalidPeptides is enabled, rebuild both Xsvs from filtered TSVs produced by
+	// filter-peptides.tpl.tengo. The filter template is a sibling consumer of propertiesFile
+	// (runs in parallel with compute-qc), so compute-qc still sees unfiltered data and
+	// "Peptides Dropped" counts in the QC table stay accurate.
 	peptidesPfBuilder := pframes.pFrameBuilder()
-	perSampleResults.addXsvOutputToBuilder(peptidesPfBuilder, "peptideTableXsv", "perSample/")
-	aggregateResults.addXsvOutputToBuilder(peptidesPfBuilder, "perPeptideXsv", "perPeptide/")
+	if args.filterInvalidPeptides {
+		filterRun := render.createEphemeral(filterPeptidesTpl, {
+			peptideTablesData: perSampleResults.outputData("peptideTableFile"),
+			propertiesFile: aggregateResults.outputData("propertiesFile")
+		})
+
+		filteredPerSampleXsv := xsv.importFile(
+			filterRun.output("filteredPerSampleTsv"),
+			"tsv",
+			{
+				axes: [
+					{ column: "sampleId", spec: sampleIdAxisSpec },
+					variantKeyAxis
+				],
+				columns: columnSpecs.columnsPerSample,
+				storageFormat: "Parquet",
+				partitionKeyLength: 1
+			},
+			{
+				splitDataAndSpec: true,
+				cpu: defaultXsvCPUs,
+				mem: string(defaultXsvMemGB) + "GiB"
+			}
+		)
+		for k, v in filteredPerSampleXsv {
+			peptidesPfBuilder.add("perSample/" + k, v.spec, v.data)
+		}
+
+		filteredPerPeptideXsv := xsv.importFile(
+			filterRun.output("filteredPerPeptideTsv"),
+			"tsv",
+			{
+				axes: [variantKeyAxis],
+				columns: columnSpecs.columnsPerVariantFromSample + columnSpecs.columnsAggregated,
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			},
+			{
+				splitDataAndSpec: true,
+				cpu: defaultXsvCPUs,
+				mem: string(defaultXsvMemGB) + "GiB"
+			}
+		)
+		for k, v in filteredPerPeptideXsv {
+			peptidesPfBuilder.add("perPeptide/" + k, v.spec, v.data)
+		}
+	} else {
+		perSampleResults.addXsvOutputToBuilder(peptidesPfBuilder, "peptideTableXsv", "perSample/")
+		aggregateResults.addXsvOutputToBuilder(peptidesPfBuilder, "perPeptideXsv", "perPeptide/")
+	}
 	peptidesPf := peptidesPfBuilder.build()
 
 	outputs := {

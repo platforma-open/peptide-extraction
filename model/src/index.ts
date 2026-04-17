@@ -25,6 +25,7 @@ export type BlockData = {
   errorBudget?: number;
   maxIndels?: number;
   autoR1OnlyAssembly?: boolean;
+  filterInvalidPeptides?: boolean;
   perProcessMemGB?: number;
   perProcessCPUs?: number;
   qcTableState: PlDataTableStateV2;
@@ -60,6 +61,7 @@ const dataModel = new DataModelBuilder()
     errorBudget: 10,
     maxIndels: 1,
     autoR1OnlyAssembly: true,
+    filterInvalidPeptides: true,
     qcTableState: createPlDataTableStateV2(),
     resultsTableState: createPlDataTableStateV2(),
     r2Mode: "generate" as const,
@@ -219,6 +221,7 @@ export const platforma = BlockModelV3.create(dataModel)
       errorBudget: data.errorBudget,
       maxIndels: data.maxIndels,
       autoR1OnlyAssembly: data.autoR1OnlyAssembly,
+      filterInvalidPeptides: data.filterInvalidPeptides ?? true,
       perProcessMemGB: data.perProcessMemGB,
       perProcessCPUs: data.perProcessCPUs,
       defaultBlockLabel: data.defaultBlockLabel ?? "",

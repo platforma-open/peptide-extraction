@@ -1,10 +1,11 @@
 """Compute peptide properties from nucleotide sequences using Biopython.
 
 Input:  TSV file with at least a 'variantKey' column containing nucleotide sequences.
-Output: Two TSV files — properties (per peptide) and AA composition (long format).
+Output: TSV with translations, lengths, physicochemical properties, QC flags
+        (hasTrailingNucleotides, hasEarlyStopCodon) and a sequence-derived label.
 
 Usage:
-  python peptide_properties.py <input.tsv> <output_properties.tsv> <output_composition.tsv>
+  python peptide_properties.py <input.tsv> <output_properties.tsv>
 """
 
 import sys
@@ -12,6 +13,7 @@ import sys
 import polars as pl
 from Bio.Seq import Seq
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
+
 
 def _translate(nt_seq: str) -> str:
     """Translate a codon-trimmed nucleotide sequence to amino acid, stopping at first stop codon."""

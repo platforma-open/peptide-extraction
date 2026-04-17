@@ -328,8 +328,19 @@ columnsAggregated := [
 ]
 
 // --- QC columns (0 extra axes, sampleId comes from processColumn iteration) ---
+// Built as a function so the trailing-nt and early-stop column labels can flip
+// between "count" wording and "Peptides Dropped - ..." wording depending on
+// whether the user enabled the filter in advanced settings.
 
-columnsQc := [
+columnsQcFn := func(filterInvalid) {
+	trailingLabel := "Trailing Nucleotides"
+	stopLabel := "Early Stop Codons"
+	if filterInvalid {
+		trailingLabel = "Peptides Dropped - Trailing Nucleotides"
+		stopLabel = "Peptides Dropped - Early Stop Codon"
+	}
+
+	return [
 	{
 		column: "totalReads",
 		id: "qc-total-reads",
@@ -407,7 +418,7 @@ columnsQc := [
 			name: "pl7.app/peptide/qc/hasTrailingNucleotides",
 			valueType: "Int",
 			annotations: a(49500, true, {
-				"pl7.app/label": "Trailing Nucleotides",
+				"pl7.app/label": trailingLabel,
 				"pl7.app/description": "Number of peptides in this sample with a nucleotide sequence whose length is not divisible by 3, meaning extra bases were trimmed before translation."
 			})
 		}
@@ -419,17 +430,18 @@ columnsQc := [
 			name: "pl7.app/peptide/qc/hasEarlyStopCodon",
 			valueType: "Int",
 			annotations: a(49400, true, {
-				"pl7.app/label": "Early Stop Codons",
+				"pl7.app/label": stopLabel,
 				"pl7.app/description": "Number of peptides in this sample containing an internal stop codon (TAA, TAG, or TGA) within the reading frame, causing the translated amino acid sequence to be shorter than expected."
 			})
 		}
 	}
 ]
+}
 
 export {
 	variantKeyAxisSpec: variantKeyAxisSpec,
 	columnsPerSample: columnsPerSample,
 	columnsPerVariantFromSample: columnsPerVariantFromSample,
 	columnsAggregated: columnsAggregated,
-	columnsQc: columnsQc
+	columnsQcFn: columnsQcFn
 }
