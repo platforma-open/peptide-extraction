@@ -1,56 +1,28 @@
 <script setup lang="ts">
-// Compact pipeline funnel for the main table.
-// Horizontal stacked bar showing proportion kept (blue) vs lost (red) reads at whole pipeline.
+// Compact Peptide Recovery bar for the main sample table.
+// Uses the same 5 segments as the detail chart (see ../recoverySegments),
+// rendered via PlChartStackedBarCompact.
 
 import type { ICellRendererParams } from "ag-grid-enterprise";
+import { PlChartStackedBarCompact } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import type { FunnelEntry } from "../pipelineFunnel";
+import { buildRecoveryChartData } from "../recoverySegments";
 
 const props = defineProps<{
   params: ICellRendererParams<unknown, FunnelEntry[] | undefined>;
 }>();
 
-const segments = computed(() => {
-  const funnel = props.params.value;
-  if (!funnel?.length) return undefined;
-
-  // Simple read-level view: blue = reads used in output, red = reads lost
-  const input = funnel.find((e) => e.step === "input");
-  const output = funnel.find((e) => e.step === "output");
-  if (!input || !output) return undefined;
-
-  const total = input.reads;
-  if (total === 0) return undefined;
-
-  const kept = output.readsInContigs ?? output.reads;
-  const lost = total - kept;
-
-  return [
-    {
-      widthPct: (kept / total) * 100,
-      color: "#4a90d9",
-      tooltip: `Reads in contigs: ${kept.toLocaleString()} (${((kept / total) * 100).toFixed(1)}%)`,
-    },
-    {
-      widthPct: (lost / total) * 100,
-      color: "#e05555",
-      tooltip: `Reads lost: ${lost.toLocaleString()} (${((lost / total) * 100).toFixed(1)}%)`,
-    },
-  ];
+const settings = computed(() => {
+  const data = buildRecoveryChartData(props.params.value ?? undefined);
+  if (!data) return undefined;
+  return { data };
 });
 </script>
 
 <template>
   <div class="funnel-cell">
-    <div v-if="segments" class="funnel-cell-bar">
-      <div
-        v-for="(seg, i) in segments"
-        :key="i"
-        class="funnel-cell-segment"
-        :style="{ width: seg.widthPct + '%', backgroundColor: seg.color }"
-        :title="seg.tooltip"
-      />
-    </div>
+    <PlChartStackedBarCompact v-if="settings" :settings="settings" />
     <div v-else class="funnel-cell-not-ready">Not ready</div>
   </div>
 </template>
@@ -61,20 +33,6 @@ const segments = computed(() => {
   display: flex;
   flex-direction: row;
   align-items: center;
-}
-
-.funnel-cell-bar {
-  width: 100%;
-  height: 16px;
-  display: flex;
-  flex-direction: row;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.funnel-cell-segment {
-  min-width: 0;
-  height: 100%;
 }
 
 .funnel-cell-not-ready {

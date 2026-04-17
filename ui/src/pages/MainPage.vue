@@ -155,7 +155,7 @@ const columnDefs: ColDef<SampleResult>[] = [
   }),
   createAgGridColDef<SampleResult, FunnelEntry[] | undefined>({
     colId: "pipelineFunnel",
-    headerName: "Read Loss",
+    headerName: "Peptide Recovery",
     headerComponentParams: { type: "Text" } satisfies PlAgHeaderComponentParams,
     flex: 1,
     cellStyle: {
