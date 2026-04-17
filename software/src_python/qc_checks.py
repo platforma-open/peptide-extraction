@@ -72,7 +72,9 @@ def parse_parse_report(text: str) -> list[dict]:
     checks = []
     total = _extract_float(text, r"Total reads:\s*([\d.]+)")
     matched = _extract_float(text, r"Matched reads:\s*([\d.]+)")
-    if total and matched and total > 0:
+    # Use `is not None` instead of truthiness so a 0-matched case still emits
+    # the check (the whole point of the alert).
+    if total is not None and matched is not None and total > 0:
         rate = matched / total
         checks.append(_check(
             "parse", "ParseMatchRate", "Parse match rate", rate,
@@ -127,6 +129,17 @@ def parse_consensus_report(text: str) -> list[dict]:
 
 # ── Pipeline funnel ───────────────────────────────────────────────────────────
 
+# Fixed schema for funnel rows. All per-sample NDJSONs must share this shape,
+# otherwise polars infers different column sets and the cross-sample concat
+# in compute-qc.tpl.tengo fails.
+FUNNEL_KEYS = ("step", "reads", "lost", "reason", "readsInContigs", "readsDiscarded")
+
+
+def _normalize_funnel(funnel: list[dict]) -> list[dict]:
+    """Fill missing keys with None so every row has the canonical schema."""
+    return [{k: entry.get(k) for k in FUNNEL_KEYS} for entry in funnel]
+
+
 def build_funnel(parse_text: str, refine_text: str, consensus_text: str) -> list[dict]:
     """Build pipeline funnel entries with read counts at each stage."""
     funnel: list[dict] = []
@@ -143,6 +156,18 @@ def build_funnel(parse_text: str, refine_text: str, consensus_text: str) -> list
             "lost": total_reads - matched_reads,
             "reason": "Pattern mismatch",
         })
+
+    # When no reads match the pattern the downstream pipeline is skipped.
+    # Still emit an output row so the Read Loss cell (which needs both input
+    # and output entries) renders 100% loss instead of "Not ready".
+    if matched_reads == 0 and total_reads is not None:
+        funnel.append({
+            "step": "output",
+            "reads": 0,
+            "lost": 0,
+            "reason": "No reads matched pattern",
+        })
+        return funnel
 
     # Refine stage
     refine_input = _extract_int(refine_text, r"Number of input records:\s*(\d+)")
@@ -289,7 +314,7 @@ def main():
             f.write(json.dumps(check) + "\n")
 
     # Pipeline funnel
-    funnel = build_funnel(parse_text, refine_text, consensus_text)
+    funnel = _normalize_funnel(build_funnel(parse_text, refine_text, consensus_text))
 
     with open(funnel_output_path, "w") as f:
         for entry in funnel:
@@ -297,6 +322,14 @@ def main():
 
     # Distributions
     distributions = build_distributions(parse_text, consensus_text)
+
+    # Guarantee at least one row. A 0-matched-reads parse report contains no
+    # length distribution sections, so build_distributions returns []. Polars
+    # scan_ndjson fails on empty files, which breaks the cross-sample concat
+    # in compute-qc.tpl.tengo. The UI looks up distributions by known dist
+    # names, so a sentinel with dist="__none__" is silently ignored.
+    if not distributions:
+        distributions.append({"dist": "__none__", "bin": "", "count": 0, "pct": 0.0})
 
     with open(dist_output_path, "w") as f:
         for entry in distributions:

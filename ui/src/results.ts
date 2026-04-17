@@ -116,9 +116,16 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
   const results: SampleResult[] = [...allSampleIds]
     .map((sampleId) => {
       const info = progressMap.get(sampleId);
+      // A funnel output entry means the downstream subtemplate returned —
+      // either via the full mitool chain (steps 2–5) or the empty branch
+      // (0 matched reads, only a 1-parse log). Using it as the completion
+      // signal covers both without relying on which step logs exist.
+      const funnelDone = funnelMap.value?.get(sampleId)?.some((e) => e.step === "output");
       let progressStr = "Queued";
 
-      if (info) {
+      if (funnelDone) {
+        progressStr = "Done";
+      } else if (info) {
         const stepNum = info.step ? info.step.split("-")[0] : "";
         const stepName = info.step ? info.step.split("-").slice(1).join("-") : "";
 

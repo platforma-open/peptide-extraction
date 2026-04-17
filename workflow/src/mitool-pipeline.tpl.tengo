@@ -1,24 +1,27 @@
-// Per-sample mitool pipeline: parse -> refine -> sort -> consensus -> tag-stat -> collapse
+// Per-sample mitool pipeline entry point.
 //
-// Runs inside pframes.processColumn, receives FASTQ files for one sample.
-// Outputs a per-sample peptide table TSV with abundance columns.
+// Runs the parse step, then hands off to a subtemplate that inspects the
+// parse report and decides whether to continue or emit placeholder outputs.
+//
+// See downstream-pipeline.tpl.tengo for the rest of the mitool chain
+// (refine -> sort -> consensus -> tag-stat -> collapse) and QC extraction.
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
-pcolumn := import("@platforma-sdk/workflow-tengo:pframes.pcolumn")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 maps := import("@platforma-sdk/workflow-tengo:maps")
-pt := import("@platforma-sdk/workflow-tengo:pt")
-units := import("@platforma-sdk/workflow-tengo:units")
+render := import("@platforma-sdk/workflow-tengo:render")
 
 json := import("json")
 
 self.defineOutputs("tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions")
 
 mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
-qcChecksSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:qc-checks")
+parseGateSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:parse-gate")
+
+downstreamTpl := assets.importTemplate(":downstream-pipeline")
 
 progressPrefix := "[==PROGRESS==]"
 
@@ -36,24 +39,13 @@ self.body(func(inputs) {
 	collapseMemGB := inputs.collapseMemGB
 	collapseCPUs := inputs.collapseCPUs
 
-	// Tag names from parsed pattern (e.g., "UMI", "UMI1", "R1", "R2")
 	parts := inputs.patternParts
-	r1UmiName := parts.r1.umiName
-	r1ReadName := parts.r1.readName
-	r2UmiName := ""
-	r2ReadName := ""
-	if !is_undefined(parts.r2) {
-		r2UmiName = parts.r2.umiName
-		r2ReadName = parts.r2.readName
-	}
-	hasR2Umi := r2UmiName != ""
 
 	ll.assert(!is_undefined(pattern) && pattern != "", "tag pattern is required")
 
 	inputDataMeta := inputData.getDataAsJson()
 
 	mitoolMem := string(mitoolMemGB) + "GiB"
-	collapseMem := string(collapseMemGB) + "GiB"
 
 	// Collect R1 and R2 FASTQ files from the aggregated input
 	R1Files := []
@@ -127,6 +119,8 @@ self.body(func(inputs) {
 	// =========================================================================
 
 	parseCmd := exec.builder().
+		writeFile("parsed.mic", bytes(0)).
+		writeFile("parse_report.txt", "").
 		printErrStreamToStdout().
 		saveStdoutStream().
 		env("MI_PROGRESS_PREFIX", progressPrefix).
@@ -150,233 +144,53 @@ self.body(func(inputs) {
 		run()
 
 	parsedMic := parseCmd.getFile("parsed.mic")
+	parseReport := parseCmd.getFile("parse_report.txt")
 
 	// =========================================================================
-	// Step 2: mitool refine-tags
+	// Parse gate: decide whether to continue based on the matched-reads count.
+	// The decision is read inside the downstream subtemplate — file contents
+	// can only be inspected in a template that receives the file as input.
 	// =========================================================================
 
-	refineCmd := exec.builder().
-		printErrStreamToStdout().
-		saveStdoutStream().
-		env("MI_PROGRESS_PREFIX", progressPrefix).
-		software(mitoolSw).
-		cpu(mitoolCPUs).
-		mem(mitoolMem).
-		arg("refine-tags").
-		arg("-t").arg(r1UmiName)
-
-	if hasR2Umi {
-		refineCmd = refineCmd.arg("-t").arg(r2UmiName)
-	}
-
-	refineCmd = refineCmd.
-		arg("--substitution-rate").arg("0.00001").
-		arg("--max-indels").arg(string(maxIndels)).
-		arg("--report").arg("refine_report.txt").
-		addFile("parsed.mic", parsedMic).
-		arg("parsed.mic").
-		arg("refined.mic").
-		saveFile("refined.mic").
-		saveFile("refine_report.txt").
+	gateCmd := exec.builder().
+		writeFile("decision.json", "").
+		software(parseGateSw).
+		cpu(1).
+		mem("256MiB").
+		arg("parse_report.txt").
+		arg("decision.json").
+		addFile("parse_report.txt", parseReport).
+		saveFileContent("decision.json").
 		run()
 
-	refinedMic := refineCmd.getFile("refined.mic")
+	decision := gateCmd.getFileContent("decision.json")
 
 	// =========================================================================
-	// Step 3: mitool sort
+	// Hand off to the downstream subtemplate — it will branch on `decision`.
 	// =========================================================================
 
-	sortCmd := exec.builder().
-		printErrStreamToStdout().
-		saveStdoutStream().
-		env("MI_PROGRESS_PREFIX", progressPrefix).
-		software(mitoolSw).
-		cpu(mitoolCPUs).
-		mem(mitoolMem).
-		arg("sort").
-		arg("-s").arg(r1UmiName)
-
-	if hasR2Umi {
-		sortCmd = sortCmd.arg("-s").arg(r2UmiName)
-	}
-
-	sortCmd = sortCmd.
-		arg("--use-local-temp").
-		addFile("refined.mic", refinedMic).
-		arg("refined.mic").
-		arg("sorted.mic").
-		saveFile("sorted.mic").
-		run()
-
-	sortedMic := sortCmd.getFile("sorted.mic")
-
-	// =========================================================================
-	// Step 4: mitool consensus
-	// =========================================================================
-
-	buildConsensusCmd := func(sortedFile, assembleR2) {
-		cmd := exec.builder().
-			printErrStreamToStdout().
-			saveStdoutStream().
-			env("MI_PROGRESS_PREFIX", progressPrefix).
-			software(mitoolSw).
-			cpu(mitoolCPUs).
-			mem(mitoolMem).
-			arg("consensus").
-			arg("--group-tag").arg(r1UmiName).
-			arg("--assemble-tag").arg(r1ReadName)
-
-		// R2: group by UMI2 (always if present) + assemble R2 (can be disabled for R1-only fallback)
-		if hasR2Umi {
-			cmd = cmd.arg("--group-tag").arg(r2UmiName)
-			if assembleR2 {
-				cmd = cmd.arg("--assemble-tag").arg(r2ReadName)
-			}
-		}
-
-		cmd = cmd.
-			arg("-O").arg("minRecordsPerConsensus=" + string(minReadsPerConsensus)).
-			arg("--threads").argWithVar("{system.cpu}").
-			arg("--report").arg("consensus_report.txt").
-			addFile("sorted.mic", sortedFile).
-			arg("sorted.mic").
-			arg("consensus.mic").
-			saveFile("consensus.mic").
-			saveFile("consensus_report.txt").
-			run()
-
-		return cmd
-	}
-
-	// Assemble R2 if pattern defines it and input has R2 files
-	consensusCmd := buildConsensusCmd(sortedMic, hasR2Umi && isPairedEnd)
-	consensusMic := consensusCmd.getFile("consensus.mic")
-
-	// TODO: R1-only fallback logic
-	// When autoR1OnlyAssembly is enabled, parse the consensus report to check
-	// assembly discard rate. If >10%, re-run with R1-only assembly.
-	// This requires reading the report file content, which we'll implement
-	// once we can test the basic pipeline.
-
-	// =========================================================================
-	// Step 5: mitool tag-stat
-	// =========================================================================
-
-	tagStatCmd := exec.builder().
-		printErrStreamToStdout().
-		saveStdoutStream().
-		env("MI_PROGRESS_PREFIX", progressPrefix).
-		software(mitoolSw).
-		cpu(mitoolCPUs).
-		mem(mitoolMem).
-		arg("tag-stat").
-		arg("-t").arg(r1ReadName).
-		arg("-t").arg(r1UmiName)
-
-	if hasR2Umi {
-		tagStatCmd = tagStatCmd.arg("-t").arg(r2UmiName)
-	}
-
-	tagStatCmd = tagStatCmd.
-		addFile("consensus.mic", consensusMic).
-		arg("consensus.mic").
-		arg("tagstat.tsv").
-		saveFile("tagstat.tsv").
-		run()
-
-	tagStatTsv := tagStatCmd.getFile("tagstat.tsv")
-
-	// =========================================================================
-	// Step 6: Collapse tag-stat to peptide table
-	//
-	// Groups by peptide nt sequence (r1ReadName tag), counts molecules, sums reads,
-	// computes per-sample fractions.
-	// =========================================================================
-
-	collapseWf := pt.workflow().
-		mem(collapseMemGB * units.GiB).
-		cpu(collapseCPUs)
-
-	// Build schema matching tag-stat output columns
-	tagStatSchema := [
-		{ column: r1ReadName, type: "String" },
-		{ column: r1UmiName, type: "String" }
-	]
-	if hasR2Umi {
-		tagStatSchema = append(tagStatSchema, { column: r2UmiName, type: "String" })
-	}
-	tagStatSchema = append(tagStatSchema, { column: "count", type: "Long" })
-	tagStatSchema = append(tagStatSchema, { column: "totalWeight", type: "Double" })
-
-	df := collapseWf.frame({
-		file: tagStatTsv,
-		xsvType: "tsv",
-		schema: tagStatSchema
-	}, {
-		id: "tagstat",
-		inferSchema: false
+	downstream := render.create(downstreamTpl, {
+		decision: decision,
+		parsedMic: parsedMic,
+		parseReport: parseReport,
+		parseLogStream: parseCmd.getStdoutStream(),
+		patternParts: parts,
+		errorBudget: errorBudget,
+		maxIndels: maxIndels,
+		minReadsPerConsensus: minReadsPerConsensus,
+		autoR1OnlyAssembly: autoR1OnlyAssembly,
+		mitoolMemGB: mitoolMemGB,
+		mitoolCPUs: mitoolCPUs,
+		collapseMemGB: collapseMemGB,
+		collapseCPUs: collapseCPUs,
+		isPairedEnd: isPairedEnd
 	})
 
-	// Group by peptide nt sequence: count molecules (rows), sum reads
-	collapsed := df.groupBy(r1ReadName).agg(
-		pt.col(r1ReadName).count().alias("uniqueMoleculeCount"),
-		pt.col("count").sum().alias("readCount")
-	)
-
-	// Per-sample normalization + rename read tag -> variantKey
-	collapsed = collapsed.withColumns(
-		pt.col(r1ReadName).alias("variantKey"),
-		pt.col("uniqueMoleculeCount").cast("Double").truediv(
-			pt.col("uniqueMoleculeCount").sum()
-		).alias("uniqueMoleculeFraction"),
-		pt.col("readCount").cast("Double").truediv(
-			pt.col("readCount").sum()
-		).alias("readFraction")
-	)
-
-	collapsed.save("peptides.tsv")
-	collapseResult := collapseWf.run()
-	peptidesTsv := collapseResult.getFile("peptides.tsv")
-
-	// Collect all step logs into a ResourceMap keyed by step name
-	stepLogs := pcolumn.resourceMapBuilder(1)
-	stepLogs.add(["1-parse"], parseCmd.getStdoutStream())
-	stepLogs.add(["2-refine"], refineCmd.getStdoutStream())
-	stepLogs.add(["3-sort"], sortCmd.getStdoutStream())
-	stepLogs.add(["4-consensus"], consensusCmd.getStdoutStream())
-	stepLogs.add(["5-tagstat"], tagStatCmd.getStdoutStream())
-
-	// =========================================================================
-	// Step 7: Extract QC checks from mitool reports
-	// =========================================================================
-
-	parseReport := parseCmd.getFile("parse_report.txt")
-	refineReport := refineCmd.getFile("refine_report.txt")
-	consensusReport := consensusCmd.getFile("consensus_report.txt")
-
-	qcChecksCmd := exec.builder().
-		software(qcChecksSw).
-		cpu(1).
-		mem("512MiB").
-		arg("parse_report.txt").
-		arg("refine_report.txt").
-		arg("consensus_report.txt").
-		arg("qc_checks.ndjson").
-		arg("pipeline_funnel.ndjson").
-		arg("distributions.ndjson").
-		addFile("parse_report.txt", parseReport).
-		addFile("refine_report.txt", refineReport).
-		addFile("consensus_report.txt", consensusReport).
-		saveFile("qc_checks.ndjson").
-		saveFile("pipeline_funnel.ndjson").
-		saveFile("distributions.ndjson").
-		run()
-
 	return {
-		tsv: peptidesTsv,
-		stepLogs: stepLogs.build(),
-		qcChecks: qcChecksCmd.getFile("qc_checks.ndjson"),
-		pipelineFunnel: qcChecksCmd.getFile("pipeline_funnel.ndjson"),
-		distributions: qcChecksCmd.getFile("distributions.ndjson")
+		tsv: downstream.output("tsv"),
+		stepLogs: downstream.output("stepLogs"),
+		qcChecks: downstream.output("qcChecks"),
+		pipelineFunnel: downstream.output("pipelineFunnel"),
+		distributions: downstream.output("distributions")
 	}
 })

@@ -45,6 +45,15 @@
             "{pkg}/qc_checks.py"
           ]
         }
+      },
+      "parse-gate": {
+        "binary": {
+          "artifact": "py-archive",
+          "cmd": [
+            "python",
+            "{pkg}/parse_gate.py"
+          ]
+        }
       }
     }
   }

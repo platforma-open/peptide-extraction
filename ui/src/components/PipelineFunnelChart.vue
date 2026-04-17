@@ -82,23 +82,24 @@ const assemblyDetail = computed(() => {
     <div class="funnel-bars">
       <div v-for="bar in bars" :key="bar.label" class="funnel-row">
         <div class="funnel-label">{{ bar.label }}</div>
-        <div class="funnel-bar-track">
-          <!-- Blue: kept reads -->
-          <div
-            class="funnel-bar-kept"
-            :style="{ width: bar.keptPct + '%' }"
-            :title="bar.keptTooltip"
-          >
-            <span class="funnel-bar-count">{{ bar.reads }}</span>
+        <div class="funnel-bar-row">
+          <div class="funnel-bar-track">
+            <!-- Blue: kept reads -->
+            <div
+              class="funnel-bar-kept"
+              :style="{ width: bar.keptPct + '%' }"
+              :title="bar.keptTooltip"
+            />
+            <!-- Lost this step: red for actual loss, muted for unit changes -->
+            <div
+              v-if="bar.lostPct > 0"
+              :class="bar.isUnitChange ? 'funnel-bar-unit-change' : 'funnel-bar-lost'"
+              :style="{ width: bar.lostPct + '%' }"
+              :title="bar.lostTooltip"
+            />
+            <!-- Gray gap: cumulative previous losses (implicit — rest of track is background) -->
           </div>
-          <!-- Lost this step: red for actual loss, muted for unit changes -->
-          <div
-            v-if="bar.lostPct > 0"
-            :class="bar.isUnitChange ? 'funnel-bar-unit-change' : 'funnel-bar-lost'"
-            :style="{ width: bar.lostPct + '%' }"
-            :title="bar.lostTooltip"
-          />
-          <!-- Gray gap: cumulative previous losses (implicit — rest of track is background) -->
+          <div class="funnel-bar-count" :title="bar.keptTooltip">{{ bar.reads }}</div>
         </div>
         <div
           v-if="bar.lostFormatted"
@@ -152,20 +153,27 @@ const assemblyDetail = computed(() => {
   color: var(--color-txt-02);
 }
 
+.funnel-bar-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
 .funnel-bar-track {
+  flex: 1;
   display: flex;
   flex-direction: row;
   height: 24px;
   background: var(--bg-base-light, #f0f0f0);
   border-radius: 4px;
   overflow: hidden;
+  min-width: 0;
 }
 
 .funnel-bar-kept {
   background: #4a90d9;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
+  box-sizing: border-box;
   min-width: 0;
   transition: width 0.3s ease;
 }
@@ -173,10 +181,11 @@ const assemblyDetail = computed(() => {
 .funnel-bar-count {
   font-size: 11px;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-txt-01);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 56px;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 .funnel-bar-lost {
