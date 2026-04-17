@@ -353,6 +353,19 @@ columnsQc := [
 		}
 	},
 	{
+		column: "readsPerUmi",
+		id: "qc-reads-per-umi",
+		spec: {
+			name: "pl7.app/peptide/qc/readsPerUmi",
+			valueType: "Double",
+			annotations: a(49850, true, {
+				"pl7.app/label": "Reads per UMI",
+				"pl7.app/format": ".1f",
+				"pl7.app/description": "Average sequencing depth per successfully-extracted peptide molecule."
+			})
+		}
+	},
+	{
 		column: "uniquePeptides",
 		id: "qc-unique-peptides",
 		spec: {

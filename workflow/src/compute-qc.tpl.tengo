@@ -92,6 +92,13 @@ self.body(func(inputs) {
 			pt.col("hasEarlyStopCodon").eq(pt.lit("true")).cast("Int").sum().alias("hasEarlyStopCodon")
 		)
 
+		// Derive reads-per-UMI
+		qcRow = qcRow.withColumns(
+			pt.col("totalReads").cast("Double").truediv(
+				pt.col("totalUMIs").cast("Double")
+			).alias("readsPerUmi")
+		)
+
 		qcFrames = append(qcFrames, qcRow)
 
 		// Per-sample AA composition: weighted by abundance
