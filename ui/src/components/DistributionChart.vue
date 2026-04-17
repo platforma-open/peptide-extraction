@@ -2,7 +2,6 @@
 // Renders per-sample distributions organized in sections:
 // 1. Peptide Sequence Lengths (R1/R2 parsed + consensus, two-column)
 // 2. UMI Lengths (side by side, only if present)
-// 3. Sequencing Depth (reads per consensus)
 
 import { computed } from "vue";
 import type { SampleDistributions, DistBin } from "../distributions";
@@ -65,10 +64,6 @@ const umi2Length = computed(() =>
   props.distributions ? buildChart(props.distributions, "umi2_length") : undefined,
 );
 const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
-
-const readsPerConsensus = computed(() =>
-  props.distributions ? buildChart(props.distributions, "reads_per_contig") : undefined,
-);
 </script>
 
 <template>
@@ -200,33 +195,6 @@ const readsPerConsensus = computed(() =>
                 </div>
                 <div class="dist-pct">{{ bin.pct }}%</div>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Sequencing Depth -->
-    <div v-if="readsPerConsensus" class="dist-section">
-      <div class="dist-section-title">Sequencing Depth</div>
-      <div class="dist-section-desc">
-        Number of reads contributing to each consensus molecule. Higher depth enables better error
-        correction.
-      </div>
-      <div class="dist-single">
-        <div class="dist-title">{{ readsPerConsensus.label }}</div>
-        <div class="dist-chart-area">
-          <div class="dist-bars">
-            <div v-for="bin in readsPerConsensus.bins" :key="bin.bin" class="dist-row">
-              <div class="dist-bin-label">{{ bin.bin }}</div>
-              <div class="dist-bar-track">
-                <div
-                  class="dist-bar-fill"
-                  :style="{ width: bin.widthPct + '%' }"
-                  :title="`${bin.count.toLocaleString()} (${bin.pct}%)`"
-                />
-              </div>
-              <div class="dist-pct">{{ bin.pct }}%</div>
             </div>
           </div>
         </div>

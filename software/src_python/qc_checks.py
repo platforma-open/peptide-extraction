@@ -268,7 +268,6 @@ def build_distributions(parse_text: str, consensus_text: str) -> list[dict]:
         # From consensus report
         "consensus_r1_length": ("Length of R1:", consensus_text),
         "consensus_r2_length": ("Length of R2:", consensus_text),
-        "reads_per_contig": ("Distribution of reads in contigs:", consensus_text),
     }
 
     for dist_name, (header, text) in dist_map.items():

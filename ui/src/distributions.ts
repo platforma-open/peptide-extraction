@@ -27,7 +27,6 @@ export function buildDistLabels(
     umi2_length: umi2,
     consensus_r1_length: `${r1} (after filtering and consensus)`,
     consensus_r2_length: `${r2} (after filtering and consensus)`,
-    reads_per_contig: "Reads per Consensus",
   };
 }
 
