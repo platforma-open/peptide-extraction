@@ -19,7 +19,7 @@ type TabId = "visualReport" | "qualityChecks" | "distributions" | "logs";
 const tabOptions: SimpleOption<TabId>[] = [
   { value: "visualReport", text: "Visual Report" },
   { value: "qualityChecks", text: "Quality Checks" },
-  { value: "distributions", text: "Distributions" },
+  { value: "distributions", text: "Peptide Lengths" },
   { value: "logs", text: "Logs" },
 ];
 const currentTab = ref<TabId>("visualReport");

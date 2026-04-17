@@ -21,12 +21,12 @@ export function buildDistLabels(
   const umi1 = r1UmiName ?? "UMI";
   const umi2 = r2UmiName ?? "UMI2";
   return {
-    r1_length: `${r1} (parsed results)`,
-    r2_length: `${r2} (parsed results)`,
-    umi_length: umi1,
-    umi2_length: umi2,
-    consensus_r1_length: `${r1} (after filtering and consensus)`,
-    consensus_r2_length: `${r2} (after filtering and consensus)`,
+    r1_length: `${r1} — as sequenced`,
+    r2_length: `${r2} — as sequenced`,
+    umi_length: `${umi1} — molecular barcode`,
+    umi2_length: `${umi2} — molecular barcode`,
+    consensus_r1_length: `${r1} — after UMI consensus`,
+    consensus_r2_length: `${r2} — after UMI consensus`,
   };
 }
 

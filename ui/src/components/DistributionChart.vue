@@ -72,7 +72,8 @@ const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
     <div v-if="hasSequenceLengths" class="dist-section">
       <div class="dist-section-title">Peptide Sequence Lengths</div>
       <div class="dist-section-desc">
-        Comparing parsed vs consensus lengths reveals truncation and filtering effects.
+        Peptide insert length before and after the pipeline builds one consensus sequence per
+        molecule. Shifts between the two reveal read truncation or quality filtering.
       </div>
 
       <div v-if="r1Extracted || r2Extracted" class="dist-pair">
@@ -158,8 +159,8 @@ const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
     <div v-if="hasUmiLengths" class="dist-section">
       <div class="dist-section-title">UMI Lengths</div>
       <div class="dist-section-desc">
-        Length distribution of extracted UMI barcodes. Variable lengths are expected for random
-        UMIs.
+        Length of the UMI molecular barcode extracted from each read. A range of lengths is expected
+        when the UMI design allows variable length.
       </div>
       <div class="dist-pair">
         <div v-if="umiLength" class="dist-col">
