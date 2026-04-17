@@ -7,13 +7,10 @@ import type { SimpleOption } from "@platforma-sdk/ui-vue";
 import { PlBtnGroup, PlCheckbox, PlNumberField, PlTextField } from "@platforma-sdk/ui-vue";
 import { computed, reactive, ref, watch } from "vue";
 import { useApp } from "../app";
-import type { HomopolymerRun } from "../pattern";
 import {
   assemblePattern,
-  detectHomopolymers,
   detectMismatches,
   generateR2fromR1,
-  defaultTrim,
   parsePattern,
   validateAnchor,
   validateTrim,
@@ -55,8 +52,8 @@ const isGenerateMode = computed(() => (app.model.data.r2Mode ?? "generate") === 
 
 type EditorMode = "write" | "build";
 const editorModeOptions: SimpleOption<EditorMode>[] = [
-  { value: "write", text: "Write pattern" },
-  { value: "build", text: "Build pattern" },
+  { value: "write", text: "Add" },
+  { value: "build", text: "Build" },
 ];
 // Auto-detect: default to "build" if pattern parses, "write" if it doesn't
 const editorMode = ref<EditorMode>("write");
@@ -307,36 +304,22 @@ function handleModeChange(newMode: "generate" | "manual") {
 
 // ── Pattern preview ───────────────────────────────────────────────────────
 
-type SegmentHl = "homopolymer" | "mismatch";
-type Segment = { text: string; hl?: SegmentHl };
+type Segment = { text: string; hl?: "mismatch" };
 
 /**
  * Build highlight segments for an anchor string.
- * Homopolymer runs and mismatch indices can be provided simultaneously.
- * Homopolymer takes priority over mismatch on the same character.
+ * Mismatch indices are highlighted (manual R2 diverging from the
+ * auto-generated reverse complement).
  */
-function buildAnchorSegments(
-  text: string,
-  homoRuns: HomopolymerRun[],
-  mismatchIndices: Set<number>,
-): Segment[] {
+function buildAnchorSegments(text: string, mismatchIndices: Set<number>): Segment[] {
   if (!text) return [];
-  // Build per-character highlight map. Set mismatches first, then overwrite with homopolymers.
-  const hl = Array.from<SegmentHl | undefined>({ length: text.length });
-  for (const i of mismatchIndices) {
-    if (i < text.length) hl[i] = "mismatch";
-  }
-  for (const { start, end } of homoRuns) {
-    for (let i = start; i < end; i++) hl[i] = "homopolymer";
-  }
-  // Group consecutive characters with the same highlight into segments
   const segs: Segment[] = [];
   let i = 0;
   while (i < text.length) {
-    const h = hl[i];
+    const isMismatch = mismatchIndices.has(i);
     let j = i + 1;
-    while (j < text.length && hl[j] === h) j++;
-    segs.push({ text: text.slice(i, j), hl: h });
+    while (j < text.length && mismatchIndices.has(j) === isMismatch) j++;
+    segs.push({ text: text.slice(i, j), hl: isMismatch ? "mismatch" : undefined });
     i = j;
   }
   return segs;
@@ -346,7 +329,6 @@ const previewSegments = computed((): Segment[] => {
   const half1 = fieldsToHalfLenient(r1);
   if (!half1) return [];
 
-  const useWildcards = app.model.data.useWildcards ?? true;
   const { min: r1min, max: r1max } = half1.umi;
   const r1UmiRange = r1min === r1max ? `${r1min}` : `${r1min}:${r1max}`;
   const r1Trim = half1.rightTrim !== undefined ? `>{${half1.rightTrim}}` : "";
@@ -384,23 +366,16 @@ const previewSegments = computed((): Segment[] => {
     );
   }
 
-  // Homopolymer runs (when wildcards enabled)
-  const empty: HomopolymerRun[] = [];
-  const r1LeftHomo = useWildcards ? detectHomopolymers(half1.leftAnchor) : empty;
-  const r1RightHomo = useWildcards ? detectHomopolymers(half1.rightAnchor, true) : empty;
-
   const r1Part: Segment[] = [
     { text: `^(${half1.umiName ?? "UMI"}:N{${r1UmiRange}})` },
-    ...buildAnchorSegments(half1.leftAnchor, r1LeftHomo, r1LeftMirror),
+    ...buildAnchorSegments(half1.leftAnchor, r1LeftMirror),
     { text: `(${half1.readName ?? "R1"}:*)` },
-    ...buildAnchorSegments(half1.rightAnchor, r1RightHomo, r1RightMirror),
+    ...buildAnchorSegments(half1.rightAnchor, r1RightMirror),
     { text: `${r1Trim}*` },
   ];
 
   if (!half2) return r1Part;
 
-  const r2LeftHomo = useWildcards ? detectHomopolymers(half2.leftAnchor) : empty;
-  const r2RightHomo = useWildcards ? detectHomopolymers(half2.rightAnchor, true) : empty;
   const { min: r2min, max: r2max } = half2.umi;
   const r2UmiRange = r2min === r2max ? `${r2min}` : `${r2min}:${r2max}`;
   const r2Trim = half2.rightTrim !== undefined ? `>{${half2.rightTrim}}` : "";
@@ -409,9 +384,9 @@ const previewSegments = computed((): Segment[] => {
     ...r1Part,
     { text: "\\" },
     { text: `^(${half2.umiName ?? "UMI2"}:N{${r2UmiRange}})` },
-    ...buildAnchorSegments(half2.leftAnchor, r2LeftHomo, r2LeftMismatch),
+    ...buildAnchorSegments(half2.leftAnchor, r2LeftMismatch),
     { text: `(${half2.readName ?? "R2"}:*)` },
-    ...buildAnchorSegments(half2.rightAnchor, r2RightHomo, r2RightMismatch),
+    ...buildAnchorSegments(half2.rightAnchor, r2RightMismatch),
     { text: `${r2Trim}*` },
   ];
 });
@@ -447,10 +422,7 @@ const previewSegments = computed((): Segment[] => {
       <span
         v-for="(seg, i) in previewSegments"
         :key="i"
-        :class="{
-          [$style.hlHomo]: seg.hl === 'homopolymer',
-          [$style.hlMismatch]: seg.hl === 'mismatch',
-        }"
+        :class="{ [$style.hlMismatch]: seg.hl === 'mismatch' }"
         >{{ seg.text }}</span
       >
     </div>
@@ -525,49 +497,51 @@ const previewSegments = computed((): Segment[] => {
       >
         Auto-generate from R1
       </PlCheckbox>
-      <template v-if="!isGenerateMode">
-        <div :class="$style.row">
-          <PlNumberField
-            v-model="r2.umiMin"
-            label="UMI min length"
-            :min-value="1"
-            :required="true"
-            :error-message="r2Errors.umi ?? undefined"
-          >
-            <template #tooltip>Length range for the random UMI barcode sequence</template>
-          </PlNumberField>
-          <PlNumberField
-            v-model="r2.umiMax"
-            label="UMI max length"
-            :min-value="r2.umiMin ?? 1"
-            :clearable="true"
-          />
-        </div>
-        <PlTextField
-          :model-value="r2.leftAnchor"
-          label="Left anchor"
-          placeholder="e.g. tgagtttttgttctgcggcc"
+      <div :class="$style.row">
+        <PlNumberField
+          v-model="r2.umiMin"
+          label="UMI min length"
+          :min-value="1"
           :required="true"
-          :error="r2Errors.leftAnchor ?? undefined"
-          @update:model-value="(v) => (r2.leftAnchor = v || undefined)"
+          :disabled="isGenerateMode"
+          :error-message="r2Errors.umi ?? undefined"
         >
-          <template #tooltip>
-            5' constant region flanking the peptide insert (lowercase = fuzzy match)
-          </template>
-        </PlTextField>
-        <PlTextField
-          :model-value="r2.rightAnchor"
-          label="Right anchor"
-          placeholder="e.g. ggccatggccgcatagaaagg"
-          :required="true"
-          :error="r2Errors.rightAnchor ?? undefined"
-          @update:model-value="(v) => (r2.rightAnchor = v || undefined)"
-        >
-          <template #tooltip>
-            3' constant region flanking the peptide insert (lowercase = fuzzy match)
-          </template>
-        </PlTextField>
-      </template>
+          <template #tooltip>Length range for the random UMI barcode sequence</template>
+        </PlNumberField>
+        <PlNumberField
+          v-model="r2.umiMax"
+          label="UMI max length"
+          :min-value="r2.umiMin ?? 1"
+          :clearable="true"
+          :disabled="isGenerateMode"
+        />
+      </div>
+      <PlTextField
+        :model-value="r2.leftAnchor"
+        label="Left anchor"
+        placeholder="e.g. tgagtttttgttctgcggcc"
+        :required="true"
+        :disabled="isGenerateMode"
+        :error="r2Errors.leftAnchor ?? undefined"
+        @update:model-value="(v) => (r2.leftAnchor = v || undefined)"
+      >
+        <template #tooltip>
+          5' constant region flanking the peptide insert (lowercase = fuzzy match)
+        </template>
+      </PlTextField>
+      <PlTextField
+        :model-value="r2.rightAnchor"
+        label="Right anchor"
+        placeholder="e.g. ggccatggccgcatagaaagg"
+        :required="true"
+        :disabled="isGenerateMode"
+        :error="r2Errors.rightAnchor ?? undefined"
+        @update:model-value="(v) => (r2.rightAnchor = v || undefined)"
+      >
+        <template #tooltip>
+          3' constant region flanking the peptide insert (lowercase = fuzzy match)
+        </template>
+      </PlTextField>
     </template>
   </template>
 </template>
@@ -623,11 +597,6 @@ const previewSegments = computed((): Segment[] => {
   padding: 8px 10px;
   margin-top: 12px;
   color: var(--pl-text-primary, #222);
-}
-
-.hlHomo {
-  background-color: rgba(255, 165, 0, 0.35);
-  border-radius: 2px;
 }
 
 .hlMismatch {
