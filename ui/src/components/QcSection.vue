@@ -5,7 +5,7 @@
 import { PlStatusTag } from "@platforma-sdk/ui-vue";
 import { reactive } from "vue";
 import type { QcCheckResult } from "../qcChecks";
-import { qcCheckDescriptions } from "../qcChecks";
+import { formatCheckPrintedValue, qcCheckDescriptions } from "../qcChecks";
 
 const props = defineProps<{
   value: QcCheckResult;
@@ -21,7 +21,7 @@ const data = reactive({ expanded: false });
     </div>
     <div class="qc-section__text">
       <div class="qc-section__label" @click.stop="data.expanded = !data.expanded">
-        {{ value.label }}: {{ value.printedValue }}
+        {{ value.label }}: {{ formatCheckPrintedValue(value) }}
       </div>
       <div class="qc-section__description">
         {{ qcCheckDescriptions[value.checkType] ?? "" }}

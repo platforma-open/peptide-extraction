@@ -51,7 +51,7 @@ def _status(value: float, upper: float, middle: float, higher_is_better: bool = 
 
 
 def _check(step: str, check_type: str, label: str, value: float,
-           printed_value: str, upper: float, middle: float,
+           printed_value: str, upper: float, middle: float, sort_order: int,
            higher_is_better: bool = True) -> dict:
     """Build a QC check result dict."""
     return {
@@ -63,6 +63,7 @@ def _check(step: str, check_type: str, label: str, value: float,
         "value": round(value, 6),
         "upper": upper,
         "middle": middle,
+        "sortOrder": sort_order,
     }
 
 
@@ -78,7 +79,7 @@ def parse_parse_report(text: str) -> list[dict]:
         rate = matched / total
         checks.append(_check(
             "parse", "ParseMatchRate", "Parse match rate", rate,
-            f"{rate * 100:.1f}%", upper=0.8, middle=0.5,
+            f"{rate * 100:.1f}%", upper=0.8, middle=0.5, sort_order=10,
         ))
     return checks
 
@@ -91,7 +92,7 @@ def parse_refine_report(text: str) -> list[dict]:
     if reads_per_umi is not None:
         checks.append(_check(
             "refine", "ReadsPerUMI", "Reads per UMI", reads_per_umi,
-            f"{reads_per_umi:.1f}", upper=4.0, middle=2.0,
+            f"{reads_per_umi:.1f}", upper=4.0, middle=2.0, sort_order=20,
         ))
     return checks
 
@@ -105,7 +106,7 @@ def parse_consensus_report(text: str) -> list[dict]:
         rate = groups_pct / 100
         checks.append(_check(
             "consensus", "SingletonsDropped", "Singletons dropped", rate,
-            f"{groups_pct:.1f}%", upper=0.15, middle=0.30, higher_is_better=False,
+            f"{groups_pct:.1f}%", upper=0.15, middle=0.30, sort_order=30, higher_is_better=False,
         ))
 
     # Assembly discard rate
@@ -114,7 +115,7 @@ def parse_consensus_report(text: str) -> list[dict]:
         rate = discard_pct / 100
         checks.append(_check(
             "consensus", "AssemblyDiscardRate", "Assembly discard rate", rate,
-            f"{discard_pct:.1f}%", upper=0.10, middle=0.20, higher_is_better=False,
+            f"{discard_pct:.1f}%", upper=0.10, middle=0.20, sort_order=40, higher_is_better=False,
         ))
 
     # Final consensus count
@@ -122,7 +123,7 @@ def parse_consensus_report(text: str) -> list[dict]:
     if consensuses is not None:
         checks.append(_check(
             "consensus", "FinalConsensusCount", "Final consensus count", consensuses,
-            f"{int(consensuses):,}", upper=100_000, middle=50_000,
+            f"{int(consensuses):,}", upper=100_000, middle=50_000, sort_order=50,
         ))
     return checks
 
