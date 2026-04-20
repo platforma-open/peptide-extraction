@@ -12,10 +12,13 @@ function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
   const umiLabel = h.umiName ?? (defaultIndex === 2 ? "UMI2" : "UMI");
   const readLabel = h.readName ?? (defaultIndex === 2 ? "R2" : "R1");
   const umiRange = min === max ? `${min}` : `${min}:${max}`;
-  // Use explicit trim if valid, otherwise default to anchor.length - 1
   const anchorLen = h.rightAnchor.length;
+  const mandatory =
+    defaultIndex === 2 ? R2_MANDATORY_RIGHT_ANCHOR_BP : R1_MANDATORY_RIGHT_ANCHOR_BP;
   const trimValue =
-    h.rightTrim !== undefined && h.rightTrim < anchorLen ? h.rightTrim : defaultTrim(anchorLen);
+    h.rightTrim !== undefined && h.rightTrim < anchorLen
+      ? h.rightTrim
+      : defaultTrim(anchorLen, mandatory);
   const trim = trimValue !== undefined ? `>{${trimValue}}` : "";
   return `^(${umiLabel}:N{${umiRange}})${h.leftAnchor}(${readLabel}:*)${h.rightAnchor}${trim}*`;
 }
@@ -73,9 +76,22 @@ export function reverseComplement(seq: string): string {
 
 // ─── Generate R2 from R1 ──────────────────────────────────────────────────────
 
-/** Default trim: allow all but 1 base to be trimmed from the right anchor. */
-export function defaultTrim(anchorLength: number): number | undefined {
-  return anchorLength > 1 ? anchorLength - 1 : undefined;
+/** Minimum bp of the R1 right-anchor that must be observable in the read.
+ *  8 bp discriminative enough (false-hit rate ~0.1% on random DNA) and short 
+ * enough that R1's 3' end quality drop doesn't routinely cause anchor-miss. */
+export const R1_MANDATORY_RIGHT_ANCHOR_BP = 8;
+
+/** Minimum bp of the R2 right-anchor that must be observable in the read.
+ *  Held at 1 bp for cases where the R2 right-anchor barely fits within read 
+ * length; R1's anchoring is strong enough on its own; R2 exists primarily for
+ * consensus. */
+export const R2_MANDATORY_RIGHT_ANCHOR_BP = 1;
+
+/** Default trim: allow the right anchor to be trimmed down to `mandatory` bp.
+ *  Returns undefined when the anchor is already shorter than `mandatory`, in
+ *  which case the assembled pattern omits the `>{N}` suffix (no trimming). */
+export function defaultTrim(anchorLength: number, mandatory: number): number | undefined {
+  return anchorLength > mandatory ? anchorLength - mandatory : undefined;
 }
 
 /**
@@ -83,7 +99,7 @@ export function defaultTrim(anchorLength: number): number | undefined {
  * - UMI range copied as-is
  * - leftAnchor  = reverse-complement of R1 rightAnchor
  * - rightAnchor = reverse-complement of R1 leftAnchor
- * - rightTrim   = rightAnchor.length - 1 (all but 1 base trimmable)
+ * - rightTrim   = trim-to-1-bp-mandatory (see R2_MANDATORY_RIGHT_ANCHOR_BP)
  */
 export function generateR2fromR1(r1: PatternHalf): PatternHalf {
   const leftAnchor = reverseComplement(r1.rightAnchor);
@@ -94,7 +110,7 @@ export function generateR2fromR1(r1: PatternHalf): PatternHalf {
     umi: { ...r1.umi },
     leftAnchor,
     rightAnchor,
-    rightTrim: defaultTrim(rightAnchor.length),
+    rightTrim: defaultTrim(rightAnchor.length, R2_MANDATORY_RIGHT_ANCHOR_BP),
   };
 }
 
