@@ -96,6 +96,13 @@ self.body(func(inputs) {
 
 	isPairedEnd := len(R2Files) > 0
 
+	// If the pattern only defines an R1 half, run single-end even when paired
+	// FASTQ input is provided
+	if isPairedEnd && is_undefined(parts.r2) {
+		isPairedEnd = false
+		R2Files = []
+	}
+
 	// Determine input arg pattern for mitool parse
 	inputArg := ""
 	if inputDataMeta.keyLength == 0 {
