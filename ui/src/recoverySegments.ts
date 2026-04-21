@@ -47,14 +47,38 @@ export function buildRecoverySegments(
   const output = funnel.find((e) => e.step === "output");
 
   const matched = parse?.reads ?? 0;
-  const refineOut = refine?.reads ?? matched;
+  const patternMismatch = Math.max(0, total - matched);
+
+  // No-UMI pipeline: funnel has no `refine` entry. All matched reads are
+  // recovered; the only loss is pattern mismatch.
+  const hasUmi = refine !== undefined;
+  if (!hasUmi) {
+    const segments: RecoverySegment[] = [
+      {
+        key: "recovered",
+        label: "Successfully extracted",
+        value: matched,
+        color: colors.recovered,
+        description: "Reads that matched the tag pattern and yielded a valid peptide.",
+      },
+      {
+        key: "patternMismatch",
+        label: "No tag pattern match",
+        value: patternMismatch,
+        color: colors.patternMismatch,
+        description: "Reads that did not match the tag pattern.",
+      },
+    ];
+    return { total, segments };
+  }
+
+  const refineOut = refine.reads;
   const readsInContigs = output?.readsInContigs ?? 0;
   const readsDiscarded = output?.readsDiscarded ?? 0;
 
   // Read-level decomposition. By construction:
   //   recovered + patternMismatch + tagQuality + singleton + assembly = total
   const recovered = readsInContigs;
-  const patternMismatch = Math.max(0, total - matched);
   const tagQuality = Math.max(0, matched - refineOut);
   const singleton = Math.max(0, refineOut - readsInContigs - readsDiscarded);
   const assembly = readsDiscarded;

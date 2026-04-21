@@ -1,17 +1,39 @@
 import type {
   PatternHalf,
   PatternParts,
-  UmiRange,
+  LengthRange,
 } from "@platforma-open/milaboratories.peptide-extraction.model";
 export { parsePattern } from "@platforma-open/milaboratories.peptide-extraction.model";
 
 // ─── Assemble ─────────────────────────────────────────────────────────────────
 
 function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
-  const { min, max } = h.umi;
-  const umiLabel = h.umiName ?? (defaultIndex === 2 ? "UMI2" : "UMI");
-  const readLabel = h.readName ?? (defaultIndex === 2 ? "R2" : "R1");
-  const umiRange = min === max ? `${min}` : `${min}:${max}`;
+  const insertLabel = h.insertName ?? (defaultIndex === 2 ? "R2" : "R1");
+
+  const prefix = h.hasLeadingWildcard ? "*" : "";
+
+  // UMI is optional: pattern may be no-UMI (e.g. NEB Ph.D. kits)
+  let umiPart = "";
+  if (h.umi) {
+    const umiLabel = h.umiName ?? (defaultIndex === 2 ? "UMI2" : "UMI");
+    const umiRange = h.umi.min === h.umi.max ? `${h.umi.min}` : `${h.umi.min}:${h.umi.max}`;
+    umiPart = `(${umiLabel}:N{${umiRange}})`;
+  }
+
+  // Insert length is optional: undefined = variable (`*`), number = fixed,
+  // LengthRange = ranged. Default is variable (matches current editor behaviour).
+  let insertPart: string;
+  if (h.insertLength === undefined) {
+    insertPart = "*";
+  } else if (typeof h.insertLength === "number") {
+    insertPart = `N{${h.insertLength}}`;
+  } else {
+    insertPart =
+      h.insertLength.min === h.insertLength.max
+        ? `N{${h.insertLength.min}}`
+        : `N{${h.insertLength.min}:${h.insertLength.max}}`;
+  }
+
   const anchorLen = h.rightAnchor.length;
   const mandatory =
     defaultIndex === 2 ? R2_MANDATORY_RIGHT_ANCHOR_BP : R1_MANDATORY_RIGHT_ANCHOR_BP;
@@ -20,7 +42,8 @@ function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
       ? h.rightTrim
       : defaultTrim(anchorLen, mandatory);
   const trim = trimValue !== undefined ? `>{${trimValue}}` : "";
-  return `^(${umiLabel}:N{${umiRange}})${h.leftAnchor}(${readLabel}:*)${h.rightAnchor}${trim}*`;
+
+  return `^${prefix}${umiPart}${h.leftAnchor}(${insertLabel}:${insertPart})${h.rightAnchor}${trim}*`;
 }
 
 /** Assemble PatternParts back into a pattern string. Case is normalized to lowercase. */
@@ -77,12 +100,12 @@ export function reverseComplement(seq: string): string {
 // ─── Generate R2 from R1 ──────────────────────────────────────────────────────
 
 /** Minimum bp of the R1 right-anchor that must be observable in the read.
- *  8 bp discriminative enough (false-hit rate ~0.1% on random DNA) and short 
+ *  8 bp discriminative enough (false-hit rate ~0.1% on random DNA) and short
  * enough that R1's 3' end quality drop doesn't routinely cause anchor-miss. */
 export const R1_MANDATORY_RIGHT_ANCHOR_BP = 8;
 
 /** Minimum bp of the R2 right-anchor that must be observable in the read.
- *  Held at 1 bp for cases where the R2 right-anchor barely fits within read 
+ *  Held at 1 bp for cases where the R2 right-anchor barely fits within read
  * length; R1's anchoring is strong enough on its own; R2 exists primarily for
  * consensus. */
 export const R2_MANDATORY_RIGHT_ANCHOR_BP = 1;
@@ -105,12 +128,14 @@ export function generateR2fromR1(r1: PatternHalf): PatternHalf {
   const leftAnchor = reverseComplement(r1.rightAnchor);
   const rightAnchor = reverseComplement(r1.leftAnchor);
   return {
-    umiName: "UMI2",
-    readName: "R2",
-    umi: { ...r1.umi },
+    umiName: r1.umi ? "UMI2" : undefined,
+    insertName: "R2",
+    umi: r1.umi ? { ...r1.umi } : undefined,
     leftAnchor,
     rightAnchor,
     rightTrim: defaultTrim(rightAnchor.length, R2_MANDATORY_RIGHT_ANCHOR_BP),
+    insertLength: r1.insertLength,
+    hasLeadingWildcard: r1.hasLeadingWildcard,
   };
 }
 
@@ -162,7 +187,7 @@ export function validateAnchor(value: string): string | null {
   return null;
 }
 
-export function validateUmiRange(umi: UmiRange): string | null {
+export function validateUmiRange(umi: LengthRange): string | null {
   if (!Number.isInteger(umi.min) || umi.min < 1) return "UMI min length must be at least 1";
   if (!Number.isInteger(umi.max) || umi.max < umi.min) return "UMI max length must be ≥ min length";
   return null;

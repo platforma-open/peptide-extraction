@@ -56,6 +56,18 @@ wf.body(func(args) {
 
 	variantKeyAxis := columnSpecs.variantKeyAxisSpec(blockId)
 
+	// Detect UMI presence from the parsed pattern. Drives which abundance
+	parts := args.patternParts
+	hasR1Umi := !is_undefined(parts.r1.umi) && !is_undefined(parts.r1.umiName) && parts.r1.umiName != ""
+	hasR2Umi := false
+	if !is_undefined(parts.r2) {
+		hasR2Umi = !is_undefined(parts.r2.umi) && !is_undefined(parts.r2.umiName) && parts.r2.umiName != ""
+	}
+	hasUmi := hasR1Umi || hasR2Umi
+
+	columnsPerSample := columnSpecs.columnsPerSampleFn(hasUmi)
+	columnsAggregated := columnSpecs.columnsAggregatedFn(hasUmi)
+
 	// Step 1: Per-sample mitool pipeline + collapse
 	// Outputs: peptide table TSV (Resource + Xsv) and log per sample
 
@@ -78,7 +90,7 @@ wf.body(func(args) {
 		xsvType: "tsv",
 		settings: {
 			axes: [variantKeyAxis],
-			columns: columnSpecs.columnsPerSample,
+			columns: columnsPerSample,
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		},
@@ -202,7 +214,7 @@ wf.body(func(args) {
 		xsvType: "tsv",
 		settings: {
 			axes: [variantKeyAxis],
-			columns: columnSpecs.columnsPerVariantFromSample + columnSpecs.columnsAggregated,
+			columns: columnSpecs.columnsPerVariantFromSample + columnsAggregated,
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		},
@@ -238,6 +250,9 @@ wf.body(func(args) {
 				anonymize: true
 			}],
 			//stepCache: 30 * times.minute,
+			extra: {
+				hasUmi: hasUmi
+			},
 			metaExtra: {
 				aggMinMemGB: defaultAggMinMemGB,
 				aggMinCPUs: defaultAggMinCPUs,
@@ -261,7 +276,8 @@ wf.body(func(args) {
 		propertiesFile: aggregateResults.outputData("propertiesFile"),
 		qcChecksData: perSampleResults.outputData("qcChecksFile"),
 		pipelineFunnelData: perSampleResults.outputData("pipelineFunnelFile"),
-		distributionsData: perSampleResults.outputData("distributionsFile")
+		distributionsData: perSampleResults.outputData("distributionsFile"),
+		hasUmi: hasUmi
 	})
 
 	qcTsvFile := qcRun.output("qcTable")
@@ -278,7 +294,7 @@ wf.body(func(args) {
 				column: "sampleId",
 				spec: sampleIdAxisSpec
 			}],
-			columns: columnSpecs.columnsQcFn(args.filterInvalidPeptides),
+			columns: columnSpecs.columnsQcFn(args.filterInvalidPeptides, hasUmi),
 			storageFormat: "Parquet",
 			partitionKeyLength: 0
 		},
@@ -304,7 +320,8 @@ wf.body(func(args) {
 	if args.filterInvalidPeptides {
 		filterRun := render.createEphemeral(filterPeptidesTpl, {
 			peptideTablesData: perSampleResults.outputData("peptideTableFile"),
-			propertiesFile: aggregateResults.outputData("propertiesFile")
+			propertiesFile: aggregateResults.outputData("propertiesFile"),
+			hasUmi: hasUmi
 		})
 
 		filteredPerSampleXsv := xsv.importFile(
@@ -315,7 +332,7 @@ wf.body(func(args) {
 					{ column: "sampleId", spec: sampleIdAxisSpec },
 					variantKeyAxis
 				],
-				columns: columnSpecs.columnsPerSample,
+				columns: columnsPerSample,
 				storageFormat: "Parquet",
 				partitionKeyLength: 1
 			},
@@ -334,7 +351,7 @@ wf.body(func(args) {
 			"tsv",
 			{
 				axes: [variantKeyAxis],
-				columns: columnSpecs.columnsPerVariantFromSample + columnSpecs.columnsAggregated,
+				columns: columnSpecs.columnsPerVariantFromSample + columnsAggregated,
 				storageFormat: "Parquet",
 				partitionKeyLength: 0
 			},

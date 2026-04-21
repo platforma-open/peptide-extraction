@@ -25,6 +25,7 @@ aminoAcids := ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L",
 self.body(func(inputs) {
 	peptideTablesData := inputs.peptideTablesData
 	propertiesFileData := inputs.propertiesFile
+	hasUmi := inputs.hasUmi
 
 	// propertiesFile comes from a fully-aggregated processColumn — it's a ResourceMap
 	// with a single entry keyed by []. Extract the actual file.
@@ -67,14 +68,19 @@ self.body(func(inputs) {
 		key := json.decode(sKey)
 		sampleId := key[0]
 
+		// Per-sample peptide table schema depends on whether the run has UMIs.
+		// With UMI: 5 columns (variantKey + uniqueMolecule* + read*). Without UMI:
+		// 3 columns (variantKey + read*). We only read what compute-qc needs.
+		sampleSchema := [{ column: "variantKey", type: "String" }]
+		if hasUmi {
+			sampleSchema = append(sampleSchema, { column: "uniqueMoleculeCount", type: "Long" })
+		}
+		sampleSchema = append(sampleSchema, { column: "readCount", type: "Long" })
+
 		sampleDf := wf.frame({
 			file: sampleFile,
 			xsvType: "tsv",
-			schema: [
-				{ column: "variantKey", type: "String" },
-				{ column: "uniqueMoleculeCount", type: "Long" },
-				{ column: "readCount", type: "Long" }
-			]
+			schema: sampleSchema
 		}, {
 			id: "sample_" + sampleId,
 			inferSchema: false
@@ -84,49 +90,60 @@ self.body(func(inputs) {
 		joined := sampleDf.join(propsDf, { on: "variantKey", how: "left" })
 
 		// Aggregate QC stats (one row)
-		qcRow := joined.select(
+		qcSelectExprs := [
 			pt.lit(sampleId).alias("sampleId"),
 			pt.col("readCount").sum().alias("totalReads"),
-			pt.col("uniqueMoleculeCount").sum().alias("totalUMIs"),
 			pt.col("variantKey").count().alias("uniquePeptides"),
 			pt.col("aaLengthPeptide").mean().alias("avgLengthAa"),
 			pt.col("ntLengthPeptide").mean().alias("avgLengthNt"),
 			pt.col("hasTrailingNucleotides").eq(pt.lit("true")).cast("Int").sum().alias("hasTrailingNucleotides"),
 			pt.col("hasEarlyStopCodon").eq(pt.lit("true")).cast("Int").sum().alias("hasEarlyStopCodon")
-		)
+		]
+		if hasUmi {
+			qcSelectExprs = append(qcSelectExprs,
+				pt.col("uniqueMoleculeCount").sum().alias("totalUMIs")
+			)
+		}
+		qcRow := joined.select(qcSelectExprs...)
 
 		// Derive reads-per-UMI
-		qcRow = qcRow.withColumns(
-			pt.col("totalReads").cast("Double").truediv(
-				pt.col("totalUMIs").cast("Double")
-			).alias("readsPerUmi")
-		)
+		if hasUmi {
+			qcRow = qcRow.withColumns(
+				pt.col("totalReads").cast("Double").truediv(
+					pt.col("totalUMIs").cast("Double")
+				).alias("readsPerUmi")
+			)
+		}
 
 		qcFrames = append(qcFrames, qcRow)
 
-		// Abundance-weighted invalid-peptide rates: fraction of UMIs whose peptide
-		// has each flag set. Rare singleton invalids barely move the needle; what
-		// matters is whether the dominant peptides are affected.
+		// Abundance-weighted invalid-peptide rates: fraction of the abundance
+		// whose peptide has each flag set. Weight by UMI count when available,
+		// otherwise by read count.
+		abundanceCol := "readCount"
+		if hasUmi {
+			abundanceCol = "uniqueMoleculeCount"
+		}
 		ratesDf := joined.select(
 			pt.lit(sampleId).alias("sampleId"),
-			pt.col("uniqueMoleculeCount").cast("Double").sum().alias("_totalUmis"),
+			pt.col(abundanceCol).cast("Double").sum().alias("_totalAbundance"),
 			pt.when(pt.col("hasTrailingNucleotides").eq(pt.lit("true"))).
-				then(pt.col("uniqueMoleculeCount").cast("Double")).
+				then(pt.col(abundanceCol).cast("Double")).
 				otherwise(pt.lit(0.0)).
 				sum().
-				alias("_umisTrailing"),
+				alias("_abundanceTrailing"),
 			pt.when(pt.col("hasEarlyStopCodon").eq(pt.lit("true"))).
-				then(pt.col("uniqueMoleculeCount").cast("Double")).
+				then(pt.col(abundanceCol).cast("Double")).
 				otherwise(pt.lit(0.0)).
 				sum().
-				alias("_umisStop")
+				alias("_abundanceStop")
 		).withColumns(
-			pt.when(pt.col("_totalUmis").gt(pt.lit(0.0))).
-				then(pt.col("_umisTrailing").truediv(pt.col("_totalUmis"))).
+			pt.when(pt.col("_totalAbundance").gt(pt.lit(0.0))).
+				then(pt.col("_abundanceTrailing").truediv(pt.col("_totalAbundance"))).
 				otherwise(pt.lit(0.0)).
 				alias("trailingRate"),
-			pt.when(pt.col("_totalUmis").gt(pt.lit(0.0))).
-				then(pt.col("_umisStop").truediv(pt.col("_totalUmis"))).
+			pt.when(pt.col("_totalAbundance").gt(pt.lit(0.0))).
+				then(pt.col("_abundanceStop").truediv(pt.col("_totalAbundance"))).
 				otherwise(pt.lit(0.0)).
 				alias("stopRate")
 		)
@@ -180,17 +197,18 @@ self.body(func(inputs) {
 		// Formula: comp_AA = sum(countOf(AA) * abundance) / sum(seqLen * abundance) * 100
 		joinedForComp := joined.filter(pt.col("aaSeqPeptide").strLenChars().gt(0))
 
-		// First pass: aggregate raw weighted counts + total weighted length
+		// First pass: aggregate raw weighted counts + total weighted length.
+		// Weight by abundance (UMI count if present, otherwise read count).
 		rawExprs := [
 			pt.lit(sampleId).alias("sampleId"),
 			pt.col("aaSeqPeptide").strLenChars().cast("Double").multiply(
-				pt.col("uniqueMoleculeCount").cast("Double")
+				pt.col(abundanceCol).cast("Double")
 			).sum().alias("_totalLen")
 		]
 		for aa in aminoAcids {
 			rawExprs = append(rawExprs,
 				pt.col("aaSeqPeptide").strCountMatches(aa, {literal: true}).cast("Double").multiply(
-					pt.col("uniqueMoleculeCount").cast("Double")
+					pt.col(abundanceCol).cast("Double")
 				).sum().alias("_cnt_" + aa)
 			)
 		}

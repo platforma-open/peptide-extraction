@@ -33,6 +33,7 @@ self.awaitState("peptideTablesData", "ResourceReady")
 self.body(func(inputs) {
 	peptideTablesData := inputs.peptideTablesData
 	propertiesFileData := inputs.propertiesFile
+	hasUmi := inputs.hasUmi
 
 	// propertiesFile comes from a fully-aggregated processColumn — it's a
 	// ResourceMap with a single "[]" entry. Extract the actual file.
@@ -60,11 +61,20 @@ self.body(func(inputs) {
 		{ column: "peptideIsoelectricPoint", type: "Double" },
 		{ column: "peptideLabel", type: "String" },
 		{ column: "hasTrailingNucleotides", type: "String" },
-		{ column: "hasEarlyStopCodon", type: "String" },
-		{ column: "uniqueMoleculeCountSum", type: "Long" },
-		{ column: "sampleCount", type: "Int" },
-		{ column: "uniqueMoleculeFractionMean", type: "Double" }
+		{ column: "hasEarlyStopCodon", type: "String" }
 	]
+	if hasUmi {
+		propertiesSchema = append(propertiesSchema,
+			{ column: "uniqueMoleculeCountSum", type: "Long" },
+			{ column: "uniqueMoleculeFractionMean", type: "Double" }
+		)
+	} else {
+		propertiesSchema = append(propertiesSchema,
+			{ column: "readCountSum", type: "Long" },
+			{ column: "readFractionMean", type: "Double" }
+		)
+	}
+	propertiesSchema = append(propertiesSchema, { column: "sampleCount", type: "Int" })
 
 	propsDf := wf.frame({
 		file: propertiesFile,
@@ -88,13 +98,20 @@ self.body(func(inputs) {
 	// via an inner join (much cheaper than a full properties join).
 	validKeysDf := filteredPropsDf.select(pt.col("variantKey"))
 
-	perSampleSchema := [
-		{ column: "variantKey", type: "String" },
-		{ column: "uniqueMoleculeCount", type: "Long" },
-		{ column: "readCount", type: "Long" },
-		{ column: "uniqueMoleculeFraction", type: "Double" },
-		{ column: "readFraction", type: "Double" }
-	]
+	perSampleSchema := [{ column: "variantKey", type: "String" }]
+	if hasUmi {
+		perSampleSchema = append(perSampleSchema,
+			{ column: "uniqueMoleculeCount", type: "Long" },
+			{ column: "readCount", type: "Long" },
+			{ column: "uniqueMoleculeFraction", type: "Double" },
+			{ column: "readFraction", type: "Double" }
+		)
+	} else {
+		perSampleSchema = append(perSampleSchema,
+			{ column: "readCount", type: "Long" },
+			{ column: "readFraction", type: "Double" }
+		)
+	}
 
 	perSampleFrames := []
 	for sKey in maps.getKeys(peptideTablesMap) {
@@ -112,15 +129,7 @@ self.body(func(inputs) {
 		})
 
 		filteredSampleDf := sampleDf.join(validKeysDf, { on: "variantKey", how: "inner" }).
-			withColumns(pt.lit(sampleId).alias("sampleId")).
-			select(
-				pt.col("sampleId"),
-				pt.col("variantKey"),
-				pt.col("uniqueMoleculeCount"),
-				pt.col("readCount"),
-				pt.col("uniqueMoleculeFraction"),
-				pt.col("readFraction")
-			)
+			withColumns(pt.lit(sampleId).alias("sampleId"))
 
 		perSampleFrames = append(perSampleFrames, filteredSampleDf)
 	}

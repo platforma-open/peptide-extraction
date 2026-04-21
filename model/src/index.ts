@@ -7,11 +7,11 @@ import {
   isPColumnSpec,
   parseResourceMap,
 } from "@platforma-sdk/model";
-import { applyWildcards, parsePattern } from "./pattern";
 import type { PatternParts } from "./pattern";
+import { applyWildcards, parsePattern } from "./pattern";
 
-export type { UmiRange, PatternHalf, PatternParts } from "./pattern";
 export { parsePattern } from "./pattern";
+export type { LengthRange, PatternHalf, PatternParts } from "./pattern";
 
 export type BlockData = {
   defaultBlockLabel?: string;
@@ -198,7 +198,10 @@ export const platforma = BlockModelV3.create(dataModel)
     const patternParts = parsePattern(data.pattern);
     if (!patternParts)
       throw new Error(
-        "Tag pattern is invalid. UMI tags must be named UMI, UMI1, UMI2, etc. Peptide tags must be named R1, R2, etc. All tag names must be unique.",
+        "Tag pattern is invalid. For each read must have the shape " +
+          "^[*][(UMI:N{min[:max]})][leftAnchor](R1:*|N{n}|N{min:max})[rightAnchor][>{trim}]*. " +
+          "UMI captures are optional. Peptide (R) captures can be variable (*), fixed N{n}, or ranged N{min:max}. " +
+          "UMI tags are named UMI, UMI1, UMI2, etc.; peptide tags R1, R2, etc. All defined tag names must be unique.",
       );
     if (data.minReadsPerConsensus !== undefined && data.minReadsPerConsensus < 1)
       throw new Error("Min reads per consensus must be at least 1");

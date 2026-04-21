@@ -54,6 +54,9 @@ catalogs:
     turbo:
       specifier: 2.8.11
       version: 2.8.11
+    vitest:
+      specifier: ^4.0.18
+      version: 4.0.18
 
 importers:
 
@@ -122,6 +125,9 @@ importers:
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
         version: 2.7.5
+      vitest:
+        specifier: 'catalog:'
+        version: 4.0.18(@types/node@25.3.2)(lightningcss@1.32.0)(yaml@2.8.1)
 
   software:
     devDependencies:

@@ -29,6 +29,7 @@ self.body(func(inputs) {
 	aggMinCPUs := inputs.aggMinCPUs
 	propertiesMemGB := inputs.propertiesMemGB
 	propertiesCPUs := inputs.propertiesCPUs
+	hasUmi := inputs.hasUmi
 
 	inputMap := inputData.inputs()
 	numberOfSamples := len(inputMap)
@@ -38,13 +39,23 @@ self.body(func(inputs) {
 		mem(int(math.max(numberOfSamples, aggMinMemGB)) * units.GiB).
 		cpu(int(math.max(numberOfSamples, aggMinCPUs)))
 
-	baseSchema := [
-		{ column: "variantKey", type: "String" },
-		{ column: "uniqueMoleculeCount", type: "Long" },
-		{ column: "readCount", type: "Long" },
-		{ column: "uniqueMoleculeFraction", type: "Double" },
-		{ column: "readFraction", type: "Double" }
-	]
+	// Per-sample schema matches what downstream-pipeline emits. With UMI: 5
+	// columns including uniqueMolecule*. Without UMI: 3 columns (readCount is
+	// the primary abundance).
+	baseSchema := [{ column: "variantKey", type: "String" }]
+	if hasUmi {
+		baseSchema = append(baseSchema,
+			{ column: "uniqueMoleculeCount", type: "Long" },
+			{ column: "readCount", type: "Long" },
+			{ column: "uniqueMoleculeFraction", type: "Double" },
+			{ column: "readFraction", type: "Double" }
+		)
+	} else {
+		baseSchema = append(baseSchema,
+			{ column: "readCount", type: "Long" },
+			{ column: "readFraction", type: "Double" }
+		)
+	}
 
 	dataFrames := []
 	for sKey in maps.getKeys(inputMap) {
@@ -77,11 +88,22 @@ self.body(func(inputs) {
 	}
 
 	// Aggregate across samples per peptide
-	aggregatedDf := currentDf.groupBy("variantKey").agg(
-		pt.col("uniqueMoleculeCount").sum().alias("uniqueMoleculeCountSum"),
-		pt.col("uniqueMoleculeFraction").count().alias("sampleCount"),
-		pt.col("uniqueMoleculeFraction").mean().alias("uniqueMoleculeFractionMean")
+	aggExprs := []
+	if hasUmi {
+		aggExprs = append(aggExprs,
+			pt.col("uniqueMoleculeCount").sum().alias("uniqueMoleculeCountSum"),
+			pt.col("uniqueMoleculeFraction").mean().alias("uniqueMoleculeFractionMean")
+		)
+	} else {
+		aggExprs = append(aggExprs,
+			pt.col("readCount").sum().alias("readCountSum"),
+			pt.col("readFraction").mean().alias("readFractionMean")
+		)
+	}
+	aggExprs = append(aggExprs,
+		pt.col("readFraction").count().alias("sampleCount")
 	)
+	aggregatedDf := currentDf.groupBy("variantKey").agg(aggExprs...)
 
 	aggregatedDf.save("aggregated.tsv")
 	ptablerResult := wf.run()

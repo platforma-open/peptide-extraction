@@ -112,6 +112,12 @@ def main():
     agg_df = pl.read_csv(input_path, separator="\t")
     df = df.join(agg_df, on="variantKey", how="left")
 
+    # Abundance columns come from aggregation (UMI-based or read-based, mutually exclusive)
+    abundance_cols = [c for c in (
+        "uniqueMoleculeCountSum", "uniqueMoleculeFractionMean",
+        "readCountSum", "readFractionMean",
+    ) if c in df.columns]
+
     # Write properties TSV
     df.select(
         "variantKey", "nSeqPeptide", "aaSeqPeptide", "ntLengthPeptide", "aaLengthPeptide",
@@ -122,9 +128,8 @@ def main():
         "peptideLabel",
         "hasTrailingNucleotides",
         "hasEarlyStopCodon",
-        "uniqueMoleculeCountSum",
+        *abundance_cols,
         "sampleCount",
-        "uniqueMoleculeFractionMean",
     ).write_csv(output_props_path, separator="\t")
 
 

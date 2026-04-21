@@ -17,8 +17,8 @@ const app = useApp();
 const labels = computed(() => {
   const parts = app.model.data.patternParts;
   return buildDistLabels(
-    parts?.r1?.readName,
-    parts?.r2?.readName,
+    parts?.r1?.insertName,
+    parts?.r2?.insertName,
     parts?.r1?.umiName,
     parts?.r2?.umiName,
   );

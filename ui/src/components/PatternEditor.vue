@@ -22,23 +22,36 @@ const app = useApp();
 // ── Local field state ──────────────────────────────────────────────────────
 
 type HalfFields = {
+  hasUmi: boolean;
   umiMin: number | undefined;
   umiMax: number | undefined;
   umiName: string | undefined;
-  readName: string | undefined;
+  insertName: string | undefined;
   leftAnchor: string | undefined;
   rightAnchor: string | undefined;
   rightTrim: number | undefined;
+  // Insert length:
+  //   hasInsertLength === false      → variable (`*`)
+  //   hasInsertLength === true:
+  //     insertMin set, insertMax unset  → fixed (`N{insertMin}`)
+  //     insertMin & insertMax both set → ranged (`N{min:max}`), fixed if equal
+  hasInsertLength: boolean;
+  insertMin: number | undefined;
+  insertMax: number | undefined;
 };
 
 const emptyHalf = (): HalfFields => ({
+  hasUmi: true, // default to UMI present — matches most existing workflows
   umiMin: undefined,
   umiMax: undefined,
   umiName: undefined,
-  readName: undefined,
+  insertName: undefined,
   leftAnchor: undefined,
   rightAnchor: undefined,
   rightTrim: undefined,
+  hasInsertLength: false, // default to variable `*`
+  insertMin: undefined,
+  insertMax: undefined,
 });
 
 const r1 = reactive<HalfFields>(emptyHalf());
@@ -82,7 +95,11 @@ const r1Errors = computed(() => ({
 
 const r2HasAnyContent = computed(
   () =>
-    r2.umiMin !== undefined || !!r2.leftAnchor || !!r2.rightAnchor || r2.rightTrim !== undefined,
+    (r2.hasUmi && r2.umiMin !== undefined) ||
+    !!r2.leftAnchor ||
+    !!r2.rightAnchor ||
+    r2.rightTrim !== undefined ||
+    r2.hasInsertLength,
 );
 
 const r2Errors = computed(() => ({
@@ -106,62 +123,133 @@ const patternParseError = computed(() => {
 
 // ── Helpers: fields ↔ PatternHalf ──────────────────────────────────────────
 
-/** Strict: returns null if any field is missing or invalid. */
+/** Compute the `insertLength` value for a PatternHalf from form fields.
+ *  Follows the same shape as UMI min/max:
+ *    - hasInsertLength false          → undefined (variable `*`)
+ *    - insertMin set, insertMax unset → fixed (`N{insertMin}`)
+ *    - insertMin & insertMax both set → ranged (`N{min:max}`; fixed when equal)
+ *  Returns `"invalid"` when hasInsertLength is on but inputs are missing/inverted.
+ */
+function insertLengthFromFields(
+  f: HalfFields,
+): number | { min: number; max: number } | undefined | "invalid" {
+  if (!f.hasInsertLength) return undefined;
+  if (f.insertMin === undefined || f.insertMin < 1) return "invalid";
+  if (f.insertMax === undefined) return f.insertMin;
+  if (f.insertMax < f.insertMin) return "invalid";
+  return f.insertMin === f.insertMax ? f.insertMin : { min: f.insertMin, max: f.insertMax };
+}
+
+/** Strict: returns null if any anchor is missing or any provided value is invalid.
+ *  UMI is optional (controlled by `hasUmi`). Insert length is user-selected
+ *  (`variable` | `fixed` | `ranged`). */
 function fieldsToHalf(f: HalfFields): PatternHalf | null {
-  if (f.umiMin === undefined) return null;
   const leftAnchor = f.leftAnchor?.trim() ?? "";
   if (!leftAnchor) return null;
-  const umi = { min: f.umiMin, max: f.umiMax ?? f.umiMin };
-  if (validateUmiRange(umi)) return null;
   if (validateAnchor(leftAnchor)) return null;
   const rightAnchor = f.rightAnchor?.trim() ?? "";
   if (!rightAnchor) return null;
   if (validateAnchor(rightAnchor)) return null;
   if (f.rightTrim !== undefined && rightAnchor && validateTrim(f.rightTrim, rightAnchor))
     return null;
+
+  let umi: { min: number; max: number } | undefined;
+  if (f.hasUmi) {
+    if (f.umiMin === undefined) return null;
+    umi = { min: f.umiMin, max: f.umiMax ?? f.umiMin };
+    if (validateUmiRange(umi)) return null;
+  }
+
+  const insertLength = insertLengthFromFields(f);
+  if (insertLength === "invalid") return null;
+
   return {
     umi,
     leftAnchor,
     rightAnchor,
     rightTrim: f.rightTrim,
     umiName: f.umiName,
-    readName: f.readName,
+    insertName: f.insertName,
+    insertLength,
   };
 }
 
 /** Lenient: returns a half with whatever fields are available. Allows empty/invalid anchors.
- *  Used for assembly and preview so the pattern always reflects the current field state. */
+ *  Used for assembly and preview so the pattern always reflects the current field state.
+ *  Returns null only when the half has no distinguishing content at all. */
 function fieldsToHalfLenient(f: HalfFields): PatternHalf | null {
-  if (f.umiMin === undefined) return null;
+  const hasAny =
+    (f.hasUmi && f.umiMin !== undefined) ||
+    !!f.leftAnchor ||
+    !!f.rightAnchor ||
+    f.rightTrim !== undefined ||
+    f.hasInsertLength;
+  if (!hasAny) return null;
+  const lenientInsert = insertLengthFromFields(f);
   return {
-    umi: { min: f.umiMin, max: f.umiMax ?? f.umiMin },
+    umi:
+      f.hasUmi && f.umiMin !== undefined ? { min: f.umiMin, max: f.umiMax ?? f.umiMin } : undefined,
     leftAnchor: f.leftAnchor?.trim() ?? "",
     rightAnchor: f.rightAnchor?.trim() ?? "",
     rightTrim: f.rightTrim,
     umiName: f.umiName,
-    readName: f.readName,
+    insertName: f.insertName,
+    // Lenient: fall back to variable when inputs are incomplete so the preview still renders
+    insertLength: lenientInsert === "invalid" ? undefined : lenientInsert,
   };
 }
 
+function insertLengthEquals(
+  a: PatternHalf["insertLength"],
+  b: PatternHalf["insertLength"],
+): boolean {
+  if (a === undefined && b === undefined) return true;
+  if (typeof a === "number" && typeof b === "number") return a === b;
+  if (a && b && typeof a === "object" && typeof b === "object")
+    return a.min === b.min && a.max === b.max;
+  return false;
+}
+
 function halfEquals(a: PatternHalf, b: PatternHalf): boolean {
+  const umiEq =
+    (a.umi === undefined && b.umi === undefined) ||
+    (a.umi !== undefined &&
+      b.umi !== undefined &&
+      a.umi.min === b.umi.min &&
+      a.umi.max === b.umi.max);
   return (
-    a.umi.min === b.umi.min &&
-    a.umi.max === b.umi.max &&
+    umiEq &&
     a.leftAnchor === b.leftAnchor &&
     a.rightAnchor === b.rightAnchor &&
-    a.rightTrim === b.rightTrim
+    a.rightTrim === b.rightTrim &&
+    insertLengthEquals(a.insertLength, b.insertLength)
   );
 }
 
 function setFieldsFromHalf(fields: HalfFields, h: PatternHalf) {
-  fields.umiMin = h.umi.min;
-  fields.umiMax = h.umi.max !== h.umi.min ? h.umi.max : undefined;
+  fields.hasUmi = h.umi !== undefined;
+  fields.umiMin = h.umi?.min;
+  fields.umiMax = h.umi && h.umi.max !== h.umi.min ? h.umi.max : undefined;
   fields.umiName = h.umiName;
-  fields.readName = h.readName;
+  fields.insertName = h.insertName;
   fields.leftAnchor = h.leftAnchor || undefined;
   fields.rightAnchor = h.rightAnchor || undefined;
   // Preserve exactly what was parsed — default trim is only applied during Build mode assembly
   fields.rightTrim = h.rightTrim;
+  // Insert length: mirror UMI shape (hasInsertLength + min/max)
+  if (h.insertLength === undefined) {
+    fields.hasInsertLength = false;
+    fields.insertMin = undefined;
+    fields.insertMax = undefined;
+  } else if (typeof h.insertLength === "number") {
+    fields.hasInsertLength = true;
+    fields.insertMin = h.insertLength;
+    fields.insertMax = undefined;
+  } else {
+    fields.hasInsertLength = true;
+    fields.insertMin = h.insertLength.min;
+    fields.insertMax = h.insertLength.max !== h.insertLength.min ? h.insertLength.max : undefined;
+  }
 }
 
 function clearHalf(fields: HalfFields) {
@@ -325,12 +413,22 @@ function buildAnchorSegments(text: string, mismatchIndices: Set<number>): Segmen
   return segs;
 }
 
+/** Render an insert-length spec in mitool pattern syntax. */
+function formatInsertLength(insertLength: PatternHalf["insertLength"]): string {
+  if (insertLength === undefined) return "*";
+  if (typeof insertLength === "number") return `N{${insertLength}}`;
+  return insertLength.min === insertLength.max
+    ? `N{${insertLength.min}}`
+    : `N{${insertLength.min}:${insertLength.max}}`;
+}
+
 const previewSegments = computed((): Segment[] => {
   const half1 = fieldsToHalfLenient(r1);
   if (!half1) return [];
 
-  const { min: r1min, max: r1max } = half1.umi;
-  const r1UmiRange = r1min === r1max ? `${r1min}` : `${r1min}:${r1max}`;
+  const r1UmiSegment = half1.umi
+    ? `^(${half1.umiName ?? "UMI"}:N{${half1.umi.min === half1.umi.max ? half1.umi.min : `${half1.umi.min}:${half1.umi.max}`}})`
+    : "^";
   const r1Trim = half1.rightTrim !== undefined ? `>{${half1.rightTrim}}` : "";
 
   // Resolve R2
@@ -367,25 +465,26 @@ const previewSegments = computed((): Segment[] => {
   }
 
   const r1Part: Segment[] = [
-    { text: `^(${half1.umiName ?? "UMI"}:N{${r1UmiRange}})` },
+    { text: r1UmiSegment },
     ...buildAnchorSegments(half1.leftAnchor, r1LeftMirror),
-    { text: `(${half1.readName ?? "R1"}:*)` },
+    { text: `(${half1.insertName ?? "R1"}:${formatInsertLength(half1.insertLength)})` },
     ...buildAnchorSegments(half1.rightAnchor, r1RightMirror),
     { text: `${r1Trim}*` },
   ];
 
   if (!half2) return r1Part;
 
-  const { min: r2min, max: r2max } = half2.umi;
-  const r2UmiRange = r2min === r2max ? `${r2min}` : `${r2min}:${r2max}`;
+  const r2UmiSegment = half2.umi
+    ? `^(${half2.umiName ?? "UMI2"}:N{${half2.umi.min === half2.umi.max ? half2.umi.min : `${half2.umi.min}:${half2.umi.max}`}})`
+    : "^";
   const r2Trim = half2.rightTrim !== undefined ? `>{${half2.rightTrim}}` : "";
 
   return [
     ...r1Part,
     { text: "\\" },
-    { text: `^(${half2.umiName ?? "UMI2"}:N{${r2UmiRange}})` },
+    { text: r2UmiSegment },
     ...buildAnchorSegments(half2.leftAnchor, r2LeftMismatch),
-    { text: `(${half2.readName ?? "R2"}:*)` },
+    { text: `(${half2.insertName ?? "R2"}:${formatInsertLength(half2.insertLength)})` },
     ...buildAnchorSegments(half2.rightAnchor, r2RightMismatch),
     { text: `${r2Trim}*` },
   ];
@@ -445,7 +544,13 @@ const previewSegments = computed((): Segment[] => {
 
     <!-- R1 fields -->
     <template v-if="readTab === 'r1'">
-      <div :class="$style.row">
+      <PlCheckbox v-model="r1.hasUmi">
+        Has UMI
+        <template #tooltip>
+          Uncheck for libraries without a molecular barcode (e.g. NEB Ph.D. phage display kits).
+        </template>
+      </PlCheckbox>
+      <div v-if="r1.hasUmi" :class="$style.row">
         <PlNumberField
           v-model="r1.umiMin"
           label="UMI min length"
@@ -465,7 +570,7 @@ const previewSegments = computed((): Segment[] => {
       <PlTextField
         :model-value="r1.leftAnchor"
         label="Left anchor"
-        placeholder="e.g. gttcctttctatgcggcccagcc"
+        placeholder="e.g. gctagcaacgatgactcgacatggcc"
         :required="true"
         :error="r1Errors.leftAnchor ?? undefined"
         @update:model-value="(v) => (r1.leftAnchor = v || undefined)"
@@ -477,7 +582,7 @@ const previewSegments = computed((): Segment[] => {
       <PlTextField
         :model-value="r1.rightAnchor"
         label="Right anchor"
-        placeholder="e.g. gcggccgcacatcatcatcac"
+        placeholder="e.g. tgcagtacgtagtcggatctag"
         :required="true"
         :error="r1Errors.rightAnchor ?? undefined"
         @update:model-value="(v) => (r1.rightAnchor = v || undefined)"
@@ -486,6 +591,28 @@ const previewSegments = computed((): Segment[] => {
           3' constant region flanking the peptide insert (lowercase = fuzzy match)
         </template>
       </PlTextField>
+      <PlCheckbox v-model="r1.hasInsertLength">
+        Delimited insert length
+        <template #tooltip>
+          Constrain the peptide insert to a specific length. Leave unchecked for variable-length
+          libraries. Set only the min field for a fixed length (e.g. 21 for NEB Ph.D.-7); set both
+          min and max for a range.
+        </template>
+      </PlCheckbox>
+      <div v-if="r1.hasInsertLength" :class="$style.row">
+        <PlNumberField
+          v-model="r1.insertMin"
+          label="Insert min length"
+          :min-value="1"
+          :required="true"
+        />
+        <PlNumberField
+          v-model="r1.insertMax"
+          label="Insert max length"
+          :min-value="r1.insertMin ?? 1"
+          :clearable="true"
+        />
+      </div>
     </template>
 
     <!-- R2 fields -->
@@ -497,7 +624,11 @@ const previewSegments = computed((): Segment[] => {
       >
         Auto-generate from R1
       </PlCheckbox>
-      <div :class="$style.row">
+      <PlCheckbox v-model="r2.hasUmi" :disabled="isGenerateMode">
+        Has UMI
+        <template #tooltip> Uncheck for libraries without a molecular barcode. </template>
+      </PlCheckbox>
+      <div v-if="r2.hasUmi" :class="$style.row">
         <PlNumberField
           v-model="r2.umiMin"
           label="UMI min length"
@@ -519,7 +650,7 @@ const previewSegments = computed((): Segment[] => {
       <PlTextField
         :model-value="r2.leftAnchor"
         label="Left anchor"
-        placeholder="e.g. tgagtttttgttctgcggcc"
+        placeholder="e.g. ctagatccgactacgtactgca"
         :required="true"
         :disabled="isGenerateMode"
         :error="r2Errors.leftAnchor ?? undefined"
@@ -532,7 +663,7 @@ const previewSegments = computed((): Segment[] => {
       <PlTextField
         :model-value="r2.rightAnchor"
         label="Right anchor"
-        placeholder="e.g. ggccatggccgcatagaaagg"
+        placeholder="e.g. cgatctagctgacagtcatcgttgctagc"
         :required="true"
         :disabled="isGenerateMode"
         :error="r2Errors.rightAnchor ?? undefined"
@@ -542,6 +673,28 @@ const previewSegments = computed((): Segment[] => {
           3' constant region flanking the peptide insert (lowercase = fuzzy match)
         </template>
       </PlTextField>
+      <PlCheckbox v-model="r2.hasInsertLength" :disabled="isGenerateMode">
+        Delimited insert length
+        <template #tooltip>
+          Constrain the peptide insert to a specific length. In generate mode this follows R1.
+        </template>
+      </PlCheckbox>
+      <div v-if="r2.hasInsertLength" :class="$style.row">
+        <PlNumberField
+          v-model="r2.insertMin"
+          label="Insert min length"
+          :min-value="1"
+          :required="true"
+          :disabled="isGenerateMode"
+        />
+        <PlNumberField
+          v-model="r2.insertMax"
+          label="Insert max length"
+          :min-value="r2.insertMin ?? 1"
+          :clearable="true"
+          :disabled="isGenerateMode"
+        />
+      </div>
     </template>
   </template>
 </template>
