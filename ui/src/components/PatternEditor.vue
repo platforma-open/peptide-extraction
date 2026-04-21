@@ -2,9 +2,17 @@
 import type {
   PatternHalf,
   PatternParts,
+  PatternSource,
 } from "@platforma-open/milaboratories.peptide-extraction.model";
-import type { SimpleOption } from "@platforma-sdk/ui-vue";
-import { PlBtnGroup, PlCheckbox, PlNumberField, PlTextField } from "@platforma-sdk/ui-vue";
+import { allPresets, getPreset } from "@platforma-open/milaboratories.peptide-extraction.model";
+import type { ListOption, SimpleOption } from "@platforma-sdk/ui-vue";
+import {
+  PlBtnGroup,
+  PlCheckbox,
+  PlDropdown,
+  PlNumberField,
+  PlTextField,
+} from "@platforma-sdk/ui-vue";
 import { computed, reactive, ref, watch } from "vue";
 import { useApp } from "../app";
 import {
@@ -56,6 +64,28 @@ const emptyHalf = (): HalfFields => ({
 
 const r1 = reactive<HalfFields>(emptyHalf());
 const r2 = reactive<HalfFields>(emptyHalf());
+
+// ── Pattern source (preset vs custom) ──────────────────────────────────────
+
+const patternSourceOptions: SimpleOption<PatternSource>[] = [
+  { value: "preset", text: "Built-in preset" },
+  { value: "custom", text: "Custom" },
+];
+
+const presetOptions = computed((): ListOption<string>[] =>
+  allPresets.map((p) => ({
+    value: p.id,
+    label: p.vendor ? `${p.label} - ${p.vendor}` : p.label,
+  })),
+);
+
+const selectedPreset = computed(() => getPreset(app.model.data.presetId));
+
+function setPresetId(id: string | undefined) {
+  app.model.data.presetId = id;
+  const p = getPreset(id);
+  if (p) app.model.data.pattern = p.pattern;
+}
 
 // ── Mode ───────────────────────────────────────────────────────────────────
 
@@ -492,214 +522,265 @@ const previewSegments = computed((): Segment[] => {
 </script>
 
 <template>
-  <PlBtnGroup v-model="editorMode" :options="editorModeOptions" />
+  <!-- Source + sub-mode toggles share one row. Each slot takes equal width so
+       layout doesn't shift when switching source. The right slot is reserved
+       for future sub-modes (e.g. preset-from-file). -->
+  <div :class="$style.modeRow">
+    <div :class="$style.modeSlot">
+      <PlBtnGroup
+        :model-value="app.model.data.patternSource ?? 'preset'"
+        :options="patternSourceOptions"
+        :class="$style.fullWidthGroup"
+        @update:model-value="(v) => (app.model.data.patternSource = v)"
+      />
+    </div>
+    <div :class="$style.modeSlot">
+      <PlBtnGroup
+        v-if="(app.model.data.patternSource ?? 'preset') === 'custom'"
+        v-model="editorMode"
+        :options="editorModeOptions"
+        :class="$style.fullWidthGroup"
+      />
+    </div>
+  </div>
 
-  <!-- Write mode: raw pattern text field -->
-  <template v-if="editorMode === 'write'">
-    <PlTextField
-      v-model="app.model.data.pattern"
-      label="Tag pattern"
-      :error="patternParseError ?? undefined"
-    >
-      <template #tooltip>
-        Use <code>UMI</code>/<code>UMI2</code> for molecular barcodes and <code>R1</code>/<code
-          >R2</code
-        >
-        for peptide sequences.<br /><br />
-        Syntax:
-        <a href="https://mixcr.com/mixcr/reference/ref-tag-pattern/" target="_blank">
-          mixcr.com/mixcr/reference/ref-tag-pattern
-        </a>
-      </template>
-    </PlTextField>
+  <!-- Built-in preset source -->
+  <template v-if="(app.model.data.patternSource ?? 'preset') === 'preset'">
+    <PlDropdown
+      :model-value="app.model.data.presetId"
+      :options="presetOptions"
+      label="Preset"
+      :required="true"
+      :error="!selectedPreset ? 'Select a preset' : undefined"
+      clearable
+      @update:model-value="setPresetId"
+    />
   </template>
 
-  <!-- Build mode: field-based editor -->
-  <template v-if="editorMode === 'build'">
-    <!-- Pattern preview -->
-    <div v-if="previewSegments.length" :class="$style.preview">
-      <span
-        v-for="(seg, i) in previewSegments"
-        :key="i"
-        :class="{ [$style.hlMismatch]: seg.hl === 'mismatch' }"
-        >{{ seg.text }}</span
-      >
-    </div>
-
-    <!-- R1 / R2 tabs -->
-    <div :class="$style.readTabs">
-      <button
-        :class="[$style.readTab, readTab === 'r1' && $style.readTabActive]"
-        @click="readTab = 'r1'"
-      >
-        Read 1
-      </button>
-      <button
-        :class="[$style.readTab, readTab === 'r2' && $style.readTabActive]"
-        @click="readTab = 'r2'"
-      >
-        Read 2
-      </button>
-    </div>
-
-    <!-- R1 fields -->
-    <template v-if="readTab === 'r1'">
-      <PlCheckbox v-model="r1.hasUmi">
-        Has UMI
-        <template #tooltip>
-          Uncheck for libraries without a molecular barcode (e.g. NEB Ph.D. phage display kits).
-        </template>
-      </PlCheckbox>
-      <div v-if="r1.hasUmi" :class="$style.row">
-        <PlNumberField
-          v-model="r1.umiMin"
-          label="UMI min length"
-          :min-value="1"
-          :required="true"
-          :error-message="r1Errors.umi ?? undefined"
-        >
-          <template #tooltip>Length range for the random UMI barcode sequence</template>
-        </PlNumberField>
-        <PlNumberField
-          v-model="r1.umiMax"
-          label="UMI max length"
-          :min-value="r1.umiMin ?? 1"
-          :clearable="true"
-        />
-      </div>
+  <!-- Custom pattern source: existing Add / Build editor -->
+  <template v-if="(app.model.data.patternSource ?? 'preset') === 'custom'">
+    <!-- Write mode: raw pattern text field -->
+    <template v-if="editorMode === 'write'">
       <PlTextField
-        :model-value="r1.leftAnchor"
-        label="Left anchor"
-        placeholder="e.g. gctagcaacgatgactcgacatggcc"
-        :required="true"
-        :error="r1Errors.leftAnchor ?? undefined"
-        @update:model-value="(v) => (r1.leftAnchor = v || undefined)"
+        v-model="app.model.data.pattern"
+        label="Tag pattern"
+        :error="patternParseError ?? undefined"
       >
         <template #tooltip>
-          5' constant region flanking the peptide insert (lowercase = fuzzy match)
+          Use <code>UMI</code>/<code>UMI2</code> for molecular barcodes and <code>R1</code>/<code
+            >R2</code
+          >
+          for peptide sequences.<br /><br />
+          Syntax:
+          <a href="https://mixcr.com/mixcr/reference/ref-tag-pattern/" target="_blank">
+            mixcr.com/mixcr/reference/ref-tag-pattern
+          </a>
         </template>
       </PlTextField>
-      <PlTextField
-        :model-value="r1.rightAnchor"
-        label="Right anchor"
-        placeholder="e.g. tgcagtacgtagtcggatctag"
-        :required="true"
-        :error="r1Errors.rightAnchor ?? undefined"
-        @update:model-value="(v) => (r1.rightAnchor = v || undefined)"
-      >
-        <template #tooltip>
-          3' constant region flanking the peptide insert (lowercase = fuzzy match)
-        </template>
-      </PlTextField>
-      <PlCheckbox v-model="r1.hasInsertLength">
-        Delimited insert length
-        <template #tooltip>
-          Constrain the peptide insert to a specific length. Leave unchecked for variable-length
-          libraries. Set only the min field for a fixed length (e.g. 21 for NEB Ph.D.-7); set both
-          min and max for a range.
-        </template>
-      </PlCheckbox>
-      <div v-if="r1.hasInsertLength" :class="$style.row">
-        <PlNumberField
-          v-model="r1.insertMin"
-          label="Insert min length"
-          :min-value="1"
-          :required="true"
-        />
-        <PlNumberField
-          v-model="r1.insertMax"
-          label="Insert max length"
-          :min-value="r1.insertMin ?? 1"
-          :clearable="true"
-        />
-      </div>
     </template>
 
-    <!-- R2 fields -->
-    <template v-if="readTab === 'r2'">
-      <PlCheckbox
-        :model-value="isGenerateMode"
-        :disabled="!autoR2"
-        @update:model-value="(v) => handleModeChange(v ? 'generate' : 'manual')"
-      >
-        Auto-generate from R1
-      </PlCheckbox>
-      <PlCheckbox v-model="r2.hasUmi" :disabled="isGenerateMode">
-        Has UMI
-        <template #tooltip> Uncheck for libraries without a molecular barcode. </template>
-      </PlCheckbox>
-      <div v-if="r2.hasUmi" :class="$style.row">
-        <PlNumberField
-          v-model="r2.umiMin"
-          label="UMI min length"
-          :min-value="1"
-          :required="true"
-          :disabled="isGenerateMode"
-          :error-message="r2Errors.umi ?? undefined"
+    <!-- Build mode: field-based editor -->
+    <template v-if="editorMode === 'build'">
+      <!-- Pattern preview -->
+      <div v-if="previewSegments.length" :class="$style.preview">
+        <span
+          v-for="(seg, i) in previewSegments"
+          :key="i"
+          :class="{ [$style.hlMismatch]: seg.hl === 'mismatch' }"
+          >{{ seg.text }}</span
         >
-          <template #tooltip>Length range for the random UMI barcode sequence</template>
-        </PlNumberField>
-        <PlNumberField
-          v-model="r2.umiMax"
-          label="UMI max length"
-          :min-value="r2.umiMin ?? 1"
-          :clearable="true"
-          :disabled="isGenerateMode"
-        />
       </div>
-      <PlTextField
-        :model-value="r2.leftAnchor"
-        label="Left anchor"
-        placeholder="e.g. ctagatccgactacgtactgca"
-        :required="true"
-        :disabled="isGenerateMode"
-        :error="r2Errors.leftAnchor ?? undefined"
-        @update:model-value="(v) => (r2.leftAnchor = v || undefined)"
-      >
-        <template #tooltip>
-          5' constant region flanking the peptide insert (lowercase = fuzzy match)
-        </template>
-      </PlTextField>
-      <PlTextField
-        :model-value="r2.rightAnchor"
-        label="Right anchor"
-        placeholder="e.g. cgatctagctgacagtcatcgttgctagc"
-        :required="true"
-        :disabled="isGenerateMode"
-        :error="r2Errors.rightAnchor ?? undefined"
-        @update:model-value="(v) => (r2.rightAnchor = v || undefined)"
-      >
-        <template #tooltip>
-          3' constant region flanking the peptide insert (lowercase = fuzzy match)
-        </template>
-      </PlTextField>
-      <PlCheckbox v-model="r2.hasInsertLength" :disabled="isGenerateMode">
-        Delimited insert length
-        <template #tooltip>
-          Constrain the peptide insert to a specific length. In generate mode this follows R1.
-        </template>
-      </PlCheckbox>
-      <div v-if="r2.hasInsertLength" :class="$style.row">
-        <PlNumberField
-          v-model="r2.insertMin"
-          label="Insert min length"
-          :min-value="1"
+
+      <!-- R1 / R2 tabs -->
+      <div :class="$style.readTabs">
+        <button
+          :class="[$style.readTab, readTab === 'r1' && $style.readTabActive]"
+          @click="readTab = 'r1'"
+        >
+          Read 1
+        </button>
+        <button
+          :class="[$style.readTab, readTab === 'r2' && $style.readTabActive]"
+          @click="readTab = 'r2'"
+        >
+          Read 2
+        </button>
+      </div>
+
+      <!-- R1 fields -->
+      <template v-if="readTab === 'r1'">
+        <PlCheckbox v-model="r1.hasUmi">
+          Has UMI
+          <template #tooltip>
+            Uncheck for libraries without a molecular barcode (e.g. NEB Ph.D. phage display kits).
+          </template>
+        </PlCheckbox>
+        <div v-if="r1.hasUmi" :class="$style.row">
+          <PlNumberField
+            v-model="r1.umiMin"
+            label="UMI min length"
+            :min-value="1"
+            :required="true"
+            :error-message="r1Errors.umi ?? undefined"
+          >
+            <template #tooltip>Length range for the random UMI barcode sequence</template>
+          </PlNumberField>
+          <PlNumberField
+            v-model="r1.umiMax"
+            label="UMI max length"
+            :min-value="r1.umiMin ?? 1"
+            :clearable="true"
+          />
+        </div>
+        <PlTextField
+          :model-value="r1.leftAnchor"
+          label="Left anchor"
+          placeholder="e.g. gctagcaacgatgactcgacatggcc"
+          :required="true"
+          :error="r1Errors.leftAnchor ?? undefined"
+          @update:model-value="(v) => (r1.leftAnchor = v || undefined)"
+        >
+          <template #tooltip>
+            5' constant region flanking the peptide insert (lowercase = fuzzy match)
+          </template>
+        </PlTextField>
+        <PlTextField
+          :model-value="r1.rightAnchor"
+          label="Right anchor"
+          placeholder="e.g. tgcagtacgtagtcggatctag"
+          :required="true"
+          :error="r1Errors.rightAnchor ?? undefined"
+          @update:model-value="(v) => (r1.rightAnchor = v || undefined)"
+        >
+          <template #tooltip>
+            3' constant region flanking the peptide insert (lowercase = fuzzy match)
+          </template>
+        </PlTextField>
+        <PlCheckbox v-model="r1.hasInsertLength">
+          Delimited insert length
+          <template #tooltip>
+            Constrain the peptide insert to a specific length. Leave unchecked for variable-length
+            libraries. Set only the min field for a fixed length (e.g. 21 for NEB Ph.D.-7); set both
+            min and max for a range.
+          </template>
+        </PlCheckbox>
+        <div v-if="r1.hasInsertLength" :class="$style.row">
+          <PlNumberField
+            v-model="r1.insertMin"
+            label="Insert min length"
+            :min-value="1"
+            :required="true"
+          />
+          <PlNumberField
+            v-model="r1.insertMax"
+            label="Insert max length"
+            :min-value="r1.insertMin ?? 1"
+            :clearable="true"
+          />
+        </div>
+      </template>
+
+      <!-- R2 fields -->
+      <template v-if="readTab === 'r2'">
+        <PlCheckbox
+          :model-value="isGenerateMode"
+          :disabled="!autoR2"
+          @update:model-value="(v) => handleModeChange(v ? 'generate' : 'manual')"
+        >
+          Auto-generate from R1
+        </PlCheckbox>
+        <PlCheckbox v-model="r2.hasUmi" :disabled="isGenerateMode">
+          Has UMI
+          <template #tooltip> Uncheck for libraries without a molecular barcode. </template>
+        </PlCheckbox>
+        <div v-if="r2.hasUmi" :class="$style.row">
+          <PlNumberField
+            v-model="r2.umiMin"
+            label="UMI min length"
+            :min-value="1"
+            :required="true"
+            :disabled="isGenerateMode"
+            :error-message="r2Errors.umi ?? undefined"
+          >
+            <template #tooltip>Length range for the random UMI barcode sequence</template>
+          </PlNumberField>
+          <PlNumberField
+            v-model="r2.umiMax"
+            label="UMI max length"
+            :min-value="r2.umiMin ?? 1"
+            :clearable="true"
+            :disabled="isGenerateMode"
+          />
+        </div>
+        <PlTextField
+          :model-value="r2.leftAnchor"
+          label="Left anchor"
+          placeholder="e.g. ctagatccgactacgtactgca"
           :required="true"
           :disabled="isGenerateMode"
-        />
-        <PlNumberField
-          v-model="r2.insertMax"
-          label="Insert max length"
-          :min-value="r2.insertMin ?? 1"
-          :clearable="true"
+          :error="r2Errors.leftAnchor ?? undefined"
+          @update:model-value="(v) => (r2.leftAnchor = v || undefined)"
+        >
+          <template #tooltip>
+            5' constant region flanking the peptide insert (lowercase = fuzzy match)
+          </template>
+        </PlTextField>
+        <PlTextField
+          :model-value="r2.rightAnchor"
+          label="Right anchor"
+          placeholder="e.g. cgatctagctgacagtcatcgttgctagc"
+          :required="true"
           :disabled="isGenerateMode"
-        />
-      </div>
+          :error="r2Errors.rightAnchor ?? undefined"
+          @update:model-value="(v) => (r2.rightAnchor = v || undefined)"
+        >
+          <template #tooltip>
+            3' constant region flanking the peptide insert (lowercase = fuzzy match)
+          </template>
+        </PlTextField>
+        <PlCheckbox v-model="r2.hasInsertLength" :disabled="isGenerateMode">
+          Delimited insert length
+          <template #tooltip>
+            Constrain the peptide insert to a specific length. In generate mode this follows R1.
+          </template>
+        </PlCheckbox>
+        <div v-if="r2.hasInsertLength" :class="$style.row">
+          <PlNumberField
+            v-model="r2.insertMin"
+            label="Insert min length"
+            :min-value="1"
+            :required="true"
+            :disabled="isGenerateMode"
+          />
+          <PlNumberField
+            v-model="r2.insertMax"
+            label="Insert max length"
+            :min-value="r2.insertMin ?? 1"
+            :clearable="true"
+            :disabled="isGenerateMode"
+          />
+        </div>
+      </template>
     </template>
   </template>
 </template>
 
 <style module>
+.modeRow {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.modeSlot {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.fullWidthGroup {
+  width: 100%;
+}
+
 .readTabs {
   display: flex;
   gap: 0;

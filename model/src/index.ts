@@ -12,11 +12,17 @@ import { applyWildcards, parsePattern } from "./pattern";
 
 export { parsePattern } from "./pattern";
 export type { LengthRange, PatternHalf, PatternParts } from "./pattern";
+export { allPresets, getPreset, presetsById } from "./presets";
+export type { Preset } from "./presets";
+
+export type PatternSource = "preset" | "custom";
 
 export type BlockData = {
   defaultBlockLabel?: string;
   customBlockLabel?: string;
   input?: PlRef;
+  patternSource?: PatternSource;
+  presetId?: string;
   pattern?: string;
   patternParts?: PatternParts;
   r2Mode?: "generate" | "manual";
@@ -66,6 +72,7 @@ const dataModel = new DataModelBuilder()
     resultsTableState: createPlDataTableStateV2(),
     r2Mode: "generate" as const,
     useWildcards: true,
+    patternSource: "preset" as const,
   }));
 
 export const platforma = BlockModelV3.create(dataModel)

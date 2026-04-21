@@ -18,7 +18,7 @@ describe("parsePattern — new shapes", () => {
     expect(parts!.r2).toBeUndefined();
   });
 
-  test("Ph.D.-12 reverse: no UMI, no left anchor, fixed capture at start", () => {
+  test("Ph.D.-12 (insert-at-read-start): no UMI, no left anchor, fixed capture at start", () => {
     const p = "^(R1:N{36})ggtggaggttcggccgaa*";
     const parts = parsePattern(p);
     expect(parts).not.toBeNull();
@@ -95,7 +95,7 @@ describe("applyWildcards — homopolymer replacement preserved", () => {
     expect(out).toBe(p);
   });
 
-  test("Ph.D.-12 reverse pattern round-trips cleanly", () => {
+  test("Ph.D.-12 (insert-at-read-start) pattern round-trips cleanly", () => {
     const p = "^(R1:N{36})ggtggaggttcggccgaa*";
     const out = applyWildcards(p);
     expect(out).toBe(p);
