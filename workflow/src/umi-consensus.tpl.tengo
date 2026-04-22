@@ -1,0 +1,130 @@
+// Per-sample UMI consensus subtemplate.
+//
+// Owns the refine-tags -> sort -> consensus chain of mitool.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+
+self.defineOutputs(
+	"consensusMic",
+	"refineReport",
+	"consensusReport",
+	"refineLog",
+	"sortLog",
+	"consensusLog"
+)
+
+mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
+
+progressPrefix := "[==PROGRESS==]"
+
+self.body(func(inputs) {
+	parsedMic := inputs.parsedMic
+	hasR1Umi := inputs.hasR1Umi
+	hasR2Umi := inputs.hasR2Umi
+	hasR2Insert := inputs.hasR2Insert
+	r1UmiName := inputs.r1UmiName
+	r2UmiName := inputs.r2UmiName
+	r1InsertName := inputs.r1InsertName
+	r2InsertName := inputs.r2InsertName
+	maxIndels := inputs.maxIndels
+	minReadsPerConsensus := inputs.minReadsPerConsensus
+	mitoolCPUs := inputs.mitoolCPUs
+	mitoolMemGB := inputs.mitoolMemGB
+	isPairedEnd := inputs.isPairedEnd
+
+	mitoolMem := string(mitoolMemGB) + "GiB"
+
+	// Step 2: mitool refine-tags
+	refineBuilder := exec.builder().
+		writeFile("refined.mic", bytes(0)).
+		writeFile("refine_report.txt", "").
+		printErrStreamToStdout().
+		saveStdoutStream().
+		env("MI_PROGRESS_PREFIX", progressPrefix).
+		software(mitoolSw).
+		cpu(mitoolCPUs).
+		mem(mitoolMem).
+		arg("refine-tags")
+
+	if hasR1Umi { refineBuilder = refineBuilder.arg("-t").arg(r1UmiName) }
+	if hasR2Umi { refineBuilder = refineBuilder.arg("-t").arg(r2UmiName) }
+
+	refineCmd := refineBuilder.
+		arg("--substitution-rate").arg("0.00001").
+		arg("--max-indels").arg(string(maxIndels)).
+		arg("--report").arg("refine_report.txt").
+		addFile("parsed.mic", parsedMic).
+		arg("parsed.mic").
+		arg("refined.mic").
+		saveFile("refined.mic").
+		saveFile("refine_report.txt").
+		run()
+
+	refinedMic := refineCmd.getFile("refined.mic")
+
+	// Step 3: mitool sort
+	sortBuilder := exec.builder().
+		writeFile("sorted.mic", bytes(0)).
+		printErrStreamToStdout().
+		saveStdoutStream().
+		env("MI_PROGRESS_PREFIX", progressPrefix).
+		software(mitoolSw).
+		cpu(mitoolCPUs).
+		mem(mitoolMem).
+		arg("sort")
+
+	if hasR1Umi { sortBuilder = sortBuilder.arg("-s").arg(r1UmiName) }
+	if hasR2Umi { sortBuilder = sortBuilder.arg("-s").arg(r2UmiName) }
+
+	sortCmd := sortBuilder.
+		arg("--use-local-temp").
+		addFile("refined.mic", refinedMic).
+		arg("refined.mic").
+		arg("sorted.mic").
+		saveFile("sorted.mic").
+		run()
+
+	sortedMic := sortCmd.getFile("sorted.mic")
+
+	// Step 4: mitool consensus
+	consensusBuilder := exec.builder().
+		writeFile("consensus.mic", bytes(0)).
+		writeFile("consensus_report.txt", "").
+		printErrStreamToStdout().
+		saveStdoutStream().
+		env("MI_PROGRESS_PREFIX", progressPrefix).
+		software(mitoolSw).
+		cpu(mitoolCPUs).
+		mem(mitoolMem).
+		arg("consensus")
+
+	if hasR1Umi { consensusBuilder = consensusBuilder.arg("--group-tag").arg(r1UmiName) }
+	if hasR2Umi { consensusBuilder = consensusBuilder.arg("--group-tag").arg(r2UmiName) }
+
+	consensusBuilder = consensusBuilder.arg("--assemble-tag").arg(r1InsertName)
+	if hasR2Insert && isPairedEnd {
+		consensusBuilder = consensusBuilder.arg("--assemble-tag").arg(r2InsertName)
+	}
+
+	consensusCmd := consensusBuilder.
+		arg("-O").arg("minRecordsPerConsensus=" + string(minReadsPerConsensus)).
+		arg("--threads").argWithVar("{system.cpu}").
+		arg("--report").arg("consensus_report.txt").
+		addFile("sorted.mic", sortedMic).
+		arg("sorted.mic").
+		arg("consensus.mic").
+		saveFile("consensus.mic").
+		saveFile("consensus_report.txt").
+		run()
+
+	return {
+		consensusMic: consensusCmd.getFile("consensus.mic"),
+		refineReport: refineCmd.getFile("refine_report.txt"),
+		consensusReport: consensusCmd.getFile("consensus_report.txt"),
+		refineLog: refineCmd.getStdoutStream(),
+		sortLog: sortCmd.getStdoutStream(),
+		consensusLog: consensusCmd.getStdoutStream()
+	}
+})

@@ -11,15 +11,21 @@ self := import("@platforma-sdk/workflow-tengo:tpl")
 pcolumn := import("@platforma-sdk/workflow-tengo:pframes.pcolumn")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
+render := import("@platforma-sdk/workflow-tengo:render")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 units := import("@platforma-sdk/workflow-tengo:units")
 
 json := import("json")
 
-self.defineOutputs("tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions")
+self.defineOutputs(
+	"tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions",
+	"consensusMic", "consensusReport"
+)
 
 mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
 qcChecksSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:qc-checks")
+
+umiConsensusTpl := assets.importTemplate(":umi-consensus")
 
 progressPrefix := "[==PROGRESS==]"
 
@@ -113,7 +119,9 @@ self.body(func(inputs) {
 			stepLogs: emptyStepLogs.build(),
 			qcChecks: emptyBranchCmd.getFile("qc_checks.ndjson"),
 			pipelineFunnel: emptyBranchCmd.getFile("pipeline_funnel.ndjson"),
-			distributions: emptyBranchCmd.getFile("distributions.ndjson")
+			distributions: emptyBranchCmd.getFile("distributions.ndjson"),
+			consensusMic: parsedMic,
+			consensusReport: parseReport
 		}
 	}
 
@@ -130,122 +138,30 @@ self.body(func(inputs) {
 
 	// Declared outside the branch so the tag-stat / qc-checks / stepLogs code
 	// below can reference them uniformly.
-	refineCmd := undefined
-	sortCmd := undefined
-	consensusCmd := undefined
+	umiRun := undefined
 	tagStatInputMic := parsedMic
 	tagStatInputFilename := "parsed.mic"
 
 	if hasAnyUmi {
-		// Step 2: mitool refine-tags. Pass `-t` for each UMI tag that actually
-		// exists (R1-only, R2-only, or both).
-		refineBuilder := exec.builder().
-			writeFile("refined.mic", bytes(0)).
-			writeFile("refine_report.txt", "").
-			printErrStreamToStdout().
-			saveStdoutStream().
-			env("MI_PROGRESS_PREFIX", progressPrefix).
-			software(mitoolSw).
-			cpu(mitoolCPUs).
-			mem(mitoolMem).
-			arg("refine-tags")
+		// Refine -> sort -> consensus lives in its own sub-template so the
+		// whole chain forms a memoization boundary
+		umiRun = render.create(umiConsensusTpl, {
+			parsedMic: parsedMic,
+			hasR1Umi: hasR1Umi,
+			hasR2Umi: hasR2Umi,
+			hasR2Insert: hasR2Insert,
+			r1UmiName: r1UmiName,
+			r2UmiName: r2UmiName,
+			r1InsertName: r1InsertName,
+			r2InsertName: r2InsertName,
+			maxIndels: maxIndels,
+			minReadsPerConsensus: minReadsPerConsensus,
+			mitoolCPUs: mitoolCPUs,
+			mitoolMemGB: mitoolMemGB,
+			isPairedEnd: isPairedEnd
+		})
 
-		if hasR1Umi {
-			refineBuilder = refineBuilder.arg("-t").arg(r1UmiName)
-		}
-		if hasR2Umi {
-			refineBuilder = refineBuilder.arg("-t").arg(r2UmiName)
-		}
-
-		refineCmd = refineBuilder.
-			arg("--substitution-rate").arg("0.00001").
-			arg("--max-indels").arg(string(maxIndels)).
-			arg("--report").arg("refine_report.txt").
-			addFile("parsed.mic", parsedMic).
-			arg("parsed.mic").
-			arg("refined.mic").
-			saveFile("refined.mic").
-			saveFile("refine_report.txt").
-			run()
-
-		refinedMic := refineCmd.getFile("refined.mic")
-
-		// Step 3: mitool sort (by whichever UMI tags exist)
-		sortBuilder := exec.builder().
-			writeFile("sorted.mic", bytes(0)).
-			printErrStreamToStdout().
-			saveStdoutStream().
-			env("MI_PROGRESS_PREFIX", progressPrefix).
-			software(mitoolSw).
-			cpu(mitoolCPUs).
-			mem(mitoolMem).
-			arg("sort")
-
-		if hasR1Umi {
-			sortBuilder = sortBuilder.arg("-s").arg(r1UmiName)
-		}
-		if hasR2Umi {
-			sortBuilder = sortBuilder.arg("-s").arg(r2UmiName)
-		}
-
-		sortCmd = sortBuilder.
-			arg("--use-local-temp").
-			addFile("refined.mic", refinedMic).
-			arg("refined.mic").
-			arg("sorted.mic").
-			saveFile("sorted.mic").
-			run()
-
-		sortedMic := sortCmd.getFile("sorted.mic")
-
-		// Step 4: mitool consensus.
-		//   --group-tag — one per UMI tag that exists (R1_UMI and/or R2_UMI).
-		//     Reads sharing the same UMI tuple are grouped together for dedup.
-		//   --assemble-tag — one per read tag captured in the pattern.
-		//     For each group, builds a majority-vote consensus of those tag
-		//     sequences independently. R1 is always assembled (the peptide read).
-		//     R2 is assembled whenever the pattern captures R2 AND the data is
-		//     paired-end.
-		buildConsensusCmd := func(sortedFile, assembleR2) {
-			cmd := exec.builder().
-				writeFile("consensus.mic", bytes(0)).
-				writeFile("consensus_report.txt", "").
-				printErrStreamToStdout().
-				saveStdoutStream().
-				env("MI_PROGRESS_PREFIX", progressPrefix).
-				software(mitoolSw).
-				cpu(mitoolCPUs).
-				mem(mitoolMem).
-				arg("consensus")
-
-			if hasR1Umi {
-				cmd = cmd.arg("--group-tag").arg(r1UmiName)
-			}
-			if hasR2Umi {
-				cmd = cmd.arg("--group-tag").arg(r2UmiName)
-			}
-
-			cmd = cmd.arg("--assemble-tag").arg(r1InsertName)
-			if hasR2Insert && assembleR2 {
-				cmd = cmd.arg("--assemble-tag").arg(r2InsertName)
-			}
-
-			cmd = cmd.
-				arg("-O").arg("minRecordsPerConsensus=" + string(minReadsPerConsensus)).
-				arg("--threads").argWithVar("{system.cpu}").
-				arg("--report").arg("consensus_report.txt").
-				addFile("sorted.mic", sortedFile).
-				arg("sorted.mic").
-				arg("consensus.mic").
-				saveFile("consensus.mic").
-				saveFile("consensus_report.txt").
-				run()
-
-			return cmd
-		}
-
-		consensusCmd = buildConsensusCmd(sortedMic, isPairedEnd)
-		tagStatInputMic = consensusCmd.getFile("consensus.mic")
+		tagStatInputMic = umiRun.output("consensusMic")
 		tagStatInputFilename = "consensus.mic"
 
 		// TODO: R1-only fallback logic
@@ -367,8 +283,8 @@ self.body(func(inputs) {
 
 	if hasAnyUmi {
 		qcChecksBuilder = qcChecksBuilder.
-			addFile("refine_report.txt", refineCmd.getFile("refine_report.txt")).
-			addFile("consensus_report.txt", consensusCmd.getFile("consensus_report.txt"))
+			addFile("refine_report.txt", umiRun.output("refineReport")).
+			addFile("consensus_report.txt", umiRun.output("consensusReport"))
 	} else {
 		qcChecksBuilder = qcChecksBuilder.
 			writeFile("refine_report.txt", "").
@@ -384,17 +300,27 @@ self.body(func(inputs) {
 	stepLogs := pcolumn.resourceMapBuilder(1)
 	stepLogs.add(["1-parse"], parseLogStream)
 	if hasAnyUmi {
-		stepLogs.add(["2-refine"], refineCmd.getStdoutStream())
-		stepLogs.add(["3-sort"], sortCmd.getStdoutStream())
-		stepLogs.add(["4-consensus"], consensusCmd.getStdoutStream())
+		stepLogs.add(["2-refine"], umiRun.output("refineLog"))
+		stepLogs.add(["3-sort"], umiRun.output("sortLog"))
+		stepLogs.add(["4-consensus"], umiRun.output("consensusLog"))
 	}
 	stepLogs.add(["5-tagstat"], tagStatCmd.getStdoutStream())
+
+	// consensus.mic + consensus_report.txt
+	consensusMicOut := parsedMic
+	consensusReportOut := parseReport
+	if hasAnyUmi {
+		consensusMicOut = umiRun.output("consensusMic")
+		consensusReportOut = umiRun.output("consensusReport")
+	}
 
 	return {
 		tsv: peptidesTsv,
 		stepLogs: stepLogs.build(),
 		qcChecks: qcChecksCmd.getFile("qc_checks.ndjson"),
 		pipelineFunnel: qcChecksCmd.getFile("pipeline_funnel.ndjson"),
-		distributions: qcChecksCmd.getFile("distributions.ndjson")
+		distributions: qcChecksCmd.getFile("distributions.ndjson"),
+		consensusMic: consensusMicOut,
+		consensusReport: consensusReportOut
 	}
 })

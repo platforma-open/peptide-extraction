@@ -188,10 +188,55 @@ wf.body(func(args) {
 		path: ["parseReport"]
 	}
 
+	consensusMicOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/consensusMic",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "consensusMic",
+		path: ["consensusMic"]
+	}
+
+	consensusReportOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/consensusReport",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "consensusReport",
+		path: ["consensusReport"]
+	}
+
+	// Flat per-sample parse log — exposed for the model's live parseProgress
+	// output and for the early sample-list signal (sampleKeys).
+	parseLogStreamOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/log",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId,
+				"pl7.app/peptide/step": "1-parse"
+			},
+			valueType: "Log"
+		},
+		name: "parseLogStream",
+		path: ["parseLogStream"]
+	}
+
 	perSampleResults := pframes.processColumn(
 		{ spec: inputSpec, data: inputData },
 		mitoolPipelineTpl,
-		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput, qcChecksFileOutput, pipelineFunnelFileOutput, distributionsFileOutput, parsedMicOutput, parseReportOutput],
+		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput, qcChecksFileOutput, pipelineFunnelFileOutput, distributionsFileOutput, parsedMicOutput, parseReportOutput, consensusMicOutput, consensusReportOutput, parseLogStreamOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sequencing/lane",
@@ -409,7 +454,10 @@ wf.body(func(args) {
 		distributions: file.exportFile(distributionsFile),
 		// Kept reachable so parse outputs are persisted by content hash (dedup).
 		parsedMic: perSampleResults.outputData("parsedMic"),
-		parseReport: perSampleResults.outputData("parseReport")
+		parseReport: perSampleResults.outputData("parseReport"),
+		consensusMic: perSampleResults.outputData("consensusMic"),
+		consensusReport: perSampleResults.outputData("consensusReport"),
+		parseLogStream: perSampleResults.outputData("parseLogStream")
 	}
 
 	exports := {

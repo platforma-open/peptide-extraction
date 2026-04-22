@@ -67,6 +67,7 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
   const sampleLabels = app.model.outputs.sampleLabels;
   const sampleKeys = app.model.outputs.sampleKeys;
   const progress = app.model.outputs.progress;
+  const parseProgress = app.model.outputs.parseProgress;
 
   // sampleKeys resolves early (once inputs are locked) — provides the full
   // sample list before per-sample processing starts. Fall back to progress keys.
@@ -81,32 +82,58 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
       allSampleIds.add(p.key[0] as string);
     }
   }
+  if (parseProgress) {
+    for (const p of parseProgress.data) {
+      allSampleIds.add(p.key[0] as string);
+    }
+  }
 
   if (allSampleIds.size === 0) return undefined;
+
+  // Unify per-step progress entries from both sources:
+  //   - parseProgress: flat per-sample (1-parse only), available early (live).
+  //   - progress: nested per-sample x step (2-refine..5-tagstat), available
+  //     once downstream-pipeline body runs (after parse completes).
+  type Entry = { key: [string, string]; value?: { progressLine?: string; live: boolean } };
+  const entries: Entry[] = [];
+  if (parseProgress) {
+    for (const p of parseProgress.data) {
+      entries.push({
+        key: [p.key[0] as string, "1-parse"],
+        value: p.value as Entry["value"],
+      });
+    }
+  }
+  if (progress) {
+    for (const p of progress.data) {
+      entries.push({
+        key: [p.key[0] as string, p.key[1] as string],
+        value: p.value as Entry["value"],
+      });
+    }
+  }
 
   // Build progress lookup: sampleId -> latest active step info
   const progressMap = new Map<string, { progressLine?: string; live: boolean; step: string }>();
 
-  if (progress) {
-    for (const p of progress.data) {
-      const sampleId = p.key[0] as string;
-      const step = p.key[1] as string;
-      const info = p.value;
-      if (!info) continue;
+  for (const p of entries) {
+    const sampleId = p.key[0];
+    const step = p.key[1];
+    const info = p.value;
+    if (!info) continue;
 
-      const current = progressMap.get(sampleId);
-      if (
-        !current ||
-        (info.live && !current.live) ||
-        (!current.live && step > current.step) ||
-        (info.live && step > current.step)
-      ) {
-        progressMap.set(sampleId, {
-          progressLine: info.progressLine,
-          live: info.live,
-          step,
-        });
-      }
+    const current = progressMap.get(sampleId);
+    if (
+      !current ||
+      (info.live && !current.live) ||
+      (!current.live && step > current.step) ||
+      (info.live && step > current.step)
+    ) {
+      progressMap.set(sampleId, {
+        progressLine: info.progressLine,
+        live: info.live,
+        step,
+      });
     }
   }
 

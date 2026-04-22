@@ -19,7 +19,8 @@ json := import("json")
 
 self.defineOutputs(
 	"tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions",
-	"parsedMic", "parseReport"
+	"parsedMic", "parseReport","consensusMic", "consensusReport",
+	"parseLogStream"
 )
 
 parseGateSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:parse-gate")
@@ -190,9 +191,13 @@ self.body(func(inputs) {
 		qcChecks: downstream.output("qcChecks"),
 		pipelineFunnel: downstream.output("pipelineFunnel"),
 		distributions: downstream.output("distributions"),
-		// Surface parse outputs so they reach main.tpl.tengo's outputs and are
-		// persisted by content hash — needed for graph-level dedup.
+		// Surface parse + UMI-consensus outputs so they reach main.tpl.tengo's
+		// outputs and are persisted by content hash — needed for graph-level dedup.
 		parsedMic: parsedMic,
-		parseReport: parseReport
+		parseReport: parseReport,
+		consensusMic: downstream.output("consensusMic"),
+		consensusReport: downstream.output("consensusReport"),
+		// Live-tappable parse stdout stream
+		parseLogStream: parseLogStream
 	}
 })

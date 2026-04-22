@@ -100,10 +100,11 @@ export const platforma = BlockModelV3.create(dataModel)
       : undefined;
   })
 
-  // Resolves early (once inputs are locked) to provide the full sample list
-  // before per-sample processing starts. Keys are [sampleId, stepName].
+  // Populates the sample list as soon as processColumn enumerates samples.
+  // Uses the flat parseLogStream output so the signal fires before any sample
+  // finishes parsing
   .output("sampleKeys", (ctx) => {
-    const acc = ctx.outputs?.resolve("stepLogs");
+    const acc = ctx.outputs?.resolve("parseLogStream");
     if (!acc || !acc.getInputsLocked()) return undefined;
     return parseResourceMap(acc, (a) => a.getLogHandle(), true);
   })
@@ -112,6 +113,19 @@ export const platforma = BlockModelV3.create(dataModel)
     return ctx.outputs !== undefined
       ? parseResourceMap(
           ctx.outputs?.resolve("stepLogs"),
+          (acc) => acc.getProgressLogWithInfo(ProgressPrefix),
+          false,
+        )
+      : undefined;
+  })
+
+  // Live parse progress — reads the flat parseLogStream Log resource, which
+  // is registered the moment mitool-pipeline's body runs (before parse
+  // completes).
+  .output("parseProgress", (ctx) => {
+    return ctx.outputs !== undefined
+      ? parseResourceMap(
+          ctx.outputs?.resolve("parseLogStream"),
           (acc) => acc.getProgressLogWithInfo(ProgressPrefix),
           false,
         )
