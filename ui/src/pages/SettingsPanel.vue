@@ -21,6 +21,14 @@ const autoR1OnlyAssembly = computed({
     app.model.data.autoR1OnlyAssembly = value;
   },
 });
+
+// Consensus-related settings only apply when the pattern carries a UMI.
+// patternParts is kept in sync by PatternEditor for all pattern sources.
+const hasUmi = computed(() => {
+  const parts = app.model.data.patternParts;
+  if (!parts) return false;
+  return parts.r1?.umi !== undefined || parts.r2?.umi !== undefined;
+});
 </script>
 
 <template>
@@ -36,27 +44,39 @@ const autoR1OnlyAssembly = computed({
   <PatternEditor />
 
   <PlAccordionSection label="Advanced settings">
-    <PlNumberField
-      v-model="app.model.data.minReadsPerConsensus"
-      label="Min reads per consensus"
-      :min-value="1"
-    >
-      <template #tooltip>
-        Minimum reads per UMI group for consensus building. Set to 1 for high-diversity or low-depth
-        libraries.
-      </template>
-    </PlNumberField>
+    <div v-if="hasUmi" style="display: flex; gap: 12px">
+      <PlNumberField
+        v-model="app.model.data.minReadsPerConsensus"
+        label="Min reads per UMI group"
+        :min-value="1"
+      >
+        <template #tooltip>
+          Minimum reads sharing a UMI. Required to accept it as a valid molecule. Higher values
+          correct more sequencing errors but discard rare molecules — use <code>1</code> for very
+          diverse libraries or low sequencing depth.<br /><br />
+          Rejected reads appear as <em>Insufficient UMI coverage</em> in the Peptide Recovery plot.
+        </template>
+      </PlNumberField>
 
-    <PlNumberField v-model="app.model.data.errorBudget" label="Error budget" :min-value="0">
-      <template #tooltip> Maximum mismatches and indels allowed during pattern matching. </template>
-    </PlNumberField>
+      <PlNumberField v-model="app.model.data.maxIndels" label="Max UMI indels" :min-value="0">
+        <template #tooltip>
+          Insertions/deletions tolerated when merging UMIs that likely come from the same molecule.
+          Higher values recover more error-containing barcodes but may collapse genuinely different
+          molecules.
+        </template>
+      </PlNumberField>
+    </div>
 
     <PlNumberField
-      v-model="app.model.data.maxIndels"
-      label="Max indels (UMI refinement)"
+      v-model="app.model.data.errorBudget"
+      label="Mismatch tolerance in anchors"
       :min-value="0"
     >
-      <template #tooltip> Maximum indels allowed during UMI refine-tags step. </template>
+      <template #tooltip>
+        Mismatches and indels allowed when matching the anchor sequences. Higher values recover more
+        reads from noisy data at the cost of spurious matches.<br /><br />
+        Known as <code>error budget</code> in mitool/MiXCR.
+      </template>
     </PlNumberField>
 
     <div style="display: flex; align-items: center; gap: 4px">
@@ -64,7 +84,7 @@ const autoR1OnlyAssembly = computed({
         :model-value="app.model.data.useWildcards ?? true"
         @update:model-value="(v) => (app.model.data.useWildcards = v)"
       >
-        Replace pattern homopolymers with wildcards
+        Mask homopolymers in anchors
       </PlCheckbox>
       <PlTooltip class="info">
         <template #tooltip>

@@ -12,7 +12,7 @@ function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
 
   const prefix = h.hasLeadingWildcard ? "*" : "";
 
-  // UMI is optional: pattern may be no-UMI (e.g. NEB Ph.D. kits)
+  // UMI is optional
   let umiPart = "";
   if (h.umi) {
     const umiLabel = h.umiName ?? (defaultIndex === 2 ? "UMI2" : "UMI");

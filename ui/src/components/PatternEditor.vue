@@ -12,6 +12,7 @@ import {
   PlDropdown,
   PlNumberField,
   PlTextField,
+  PlTooltip,
 } from "@platforma-sdk/ui-vue";
 import { computed, reactive, ref, watch } from "vue";
 import { useApp } from "../app";
@@ -572,6 +573,26 @@ const previewSegments = computed((): Segment[] => {
 
     <!-- User-configurable preset: small form (anchors, insert length, UMI length) -->
     <template v-if="isUserConfigurablePreset">
+      <div :class="$style.row">
+        <PlNumberField
+          v-model="r1.umiMin"
+          label="UMI min length"
+          :min-value="1"
+          :required="true"
+          :error-message="r1Errors.umi ?? undefined"
+        >
+          <template #tooltip>
+            Length of the UMI barcode. Leave max length empty for a fixed UMI length (equal to min);
+            set both min and max for a range.
+          </template>
+        </PlNumberField>
+        <PlNumberField
+          v-model="r1.umiMax"
+          label="UMI max length"
+          :min-value="r1.umiMin ?? 1"
+          :clearable="true"
+        />
+      </div>
       <PlTextField
         :model-value="r1.leftAnchor"
         label="5' anchor"
@@ -594,13 +615,16 @@ const previewSegments = computed((): Segment[] => {
           Constant sequence flanking the insert on its 3' side (downstream of the peptide).
         </template>
       </PlTextField>
-      <PlCheckbox v-model="r1.hasInsertLength">
-        Delimited insert length
-        <template #tooltip>
-          Constrain the peptide insert to a specific length. Leave unchecked for variable-length
-          libraries. Set only the min field for a fixed length; set both min and max for a range.
-        </template>
-      </PlCheckbox>
+      <div style="display: flex; align-items: center; gap: 4px">
+        <PlCheckbox v-model="r1.hasInsertLength">Delimited insert length</PlCheckbox>
+        <PlTooltip class="info">
+          <template #tooltip>
+            Constrain the peptide sequence (the insert) to a specific length in nucleotides. Leave
+            unchecked for variable-length libraries. Set only the min field for a fixed length; set
+            both min and max for a range.
+          </template>
+        </PlTooltip>
+      </div>
       <div v-if="r1.hasInsertLength" :class="$style.row">
         <PlNumberField
           v-model="r1.insertMin"
@@ -612,26 +636,6 @@ const previewSegments = computed((): Segment[] => {
           v-model="r1.insertMax"
           label="Insert max length"
           :min-value="r1.insertMin ?? 1"
-          :clearable="true"
-        />
-      </div>
-      <div :class="$style.row">
-        <PlNumberField
-          v-model="r1.umiMin"
-          label="UMI min length"
-          :min-value="1"
-          :required="true"
-          :error-message="r1Errors.umi ?? undefined"
-        >
-          <template #tooltip>
-            Length of the UMI barcode. Leave max length empty for a fixed UMI length (equal to min);
-            set both min and max for a range.
-          </template>
-        </PlNumberField>
-        <PlNumberField
-          v-model="r1.umiMax"
-          label="UMI max length"
-          :min-value="r1.umiMin ?? 1"
           :clearable="true"
         />
       </div>
@@ -692,9 +696,7 @@ const previewSegments = computed((): Segment[] => {
       <template v-if="readTab === 'r1'">
         <PlCheckbox v-model="r1.hasUmi">
           Has UMI
-          <template #tooltip>
-            Uncheck for libraries without a molecular barcode (e.g. NEB Ph.D. phage display kits).
-          </template>
+          <template #tooltip> Uncheck for libraries without a molecular barcode. </template>
         </PlCheckbox>
         <div v-if="r1.hasUmi" :class="$style.row">
           <PlNumberField
@@ -737,14 +739,16 @@ const previewSegments = computed((): Segment[] => {
             3' constant region flanking the peptide insert (lowercase = fuzzy match)
           </template>
         </PlTextField>
-        <PlCheckbox v-model="r1.hasInsertLength">
-          Delimited insert length
-          <template #tooltip>
-            Constrain the peptide insert to a specific length. Leave unchecked for variable-length
-            libraries. Set only the min field for a fixed length (e.g. 21 for NEB Ph.D.-7); set both
-            min and max for a range.
-          </template>
-        </PlCheckbox>
+        <div style="display: flex; align-items: center; gap: 4px">
+          <PlCheckbox v-model="r1.hasInsertLength">Delimited insert length</PlCheckbox>
+          <PlTooltip class="info">
+            <template #tooltip>
+              Constrain the peptide sequence (the insert) to a specific length in nucleotides. Leave
+              unchecked for variable-length libraries. Set only the min field for a fixed length;
+              set both min and max for a range.
+            </template>
+          </PlTooltip>
+        </div>
         <div v-if="r1.hasInsertLength" :class="$style.row">
           <PlNumberField
             v-model="r1.insertMin"
@@ -819,12 +823,17 @@ const previewSegments = computed((): Segment[] => {
             3' constant region flanking the peptide insert (lowercase = fuzzy match)
           </template>
         </PlTextField>
-        <PlCheckbox v-model="r2.hasInsertLength" :disabled="isGenerateMode">
-          Delimited insert length
-          <template #tooltip>
-            Constrain the peptide insert to a specific length. In generate mode this follows R1.
-          </template>
-        </PlCheckbox>
+        <div style="display: flex; align-items: center; gap: 4px">
+          <PlCheckbox v-model="r2.hasInsertLength" :disabled="isGenerateMode">
+            Delimited insert length
+          </PlCheckbox>
+          <PlTooltip class="info">
+            <template #tooltip>
+              Constrain the peptide sequence (the insert) to a specific length in nucleotides. In
+              generate mode this follows R1.
+            </template>
+          </PlTooltip>
+        </div>
         <div v-if="r2.hasInsertLength" :class="$style.row">
           <PlNumberField
             v-model="r2.insertMin"
