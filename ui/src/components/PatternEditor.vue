@@ -578,15 +578,29 @@ const previewSegments = computed((): Segment[] => {
         :required="true"
         :error="r1Errors.leftAnchor ?? undefined"
         @update:model-value="(v) => (r1.leftAnchor = v || undefined)"
-      />
+      >
+        <template #tooltip>
+          Constant sequence flanking the insert on its 5' side (upstream of the peptide).
+        </template>
+      </PlTextField>
       <PlTextField
         :model-value="r1.rightAnchor"
         label="3' anchor"
         :required="true"
         :error="r1Errors.rightAnchor ?? undefined"
         @update:model-value="(v) => (r1.rightAnchor = v || undefined)"
-      />
-      <PlCheckbox v-model="r1.hasInsertLength">Delimited insert length</PlCheckbox>
+      >
+        <template #tooltip>
+          Constant sequence flanking the insert on its 3' side (downstream of the peptide).
+        </template>
+      </PlTextField>
+      <PlCheckbox v-model="r1.hasInsertLength">
+        Delimited insert length
+        <template #tooltip>
+          Constrain the peptide insert to a specific length. Leave unchecked for variable-length
+          libraries. Set only the min field for a fixed length; set both min and max for a range.
+        </template>
+      </PlCheckbox>
       <div v-if="r1.hasInsertLength" :class="$style.row">
         <PlNumberField
           v-model="r1.insertMin"
@@ -608,7 +622,12 @@ const previewSegments = computed((): Segment[] => {
           :min-value="1"
           :required="true"
           :error-message="r1Errors.umi ?? undefined"
-        />
+        >
+          <template #tooltip>
+            Length of the UMI barcode. Leave max length empty for a fixed UMI length (equal to min);
+            set both min and max for a range.
+          </template>
+        </PlNumberField>
         <PlNumberField
           v-model="r1.umiMax"
           label="UMI max length"
