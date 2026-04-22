@@ -159,10 +159,39 @@ wf.body(func(args) {
 		path: ["distributions"]
 	}
 
+	// Parse outputs — surfaced for deduplication
+	parsedMicOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/parsedMic",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "parsedMic",
+		path: ["parsedMic"]
+	}
+
+	parseReportOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/parseReport",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "parseReport",
+		path: ["parseReport"]
+	}
+
 	perSampleResults := pframes.processColumn(
 		{ spec: inputSpec, data: inputData },
 		mitoolPipelineTpl,
-		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput, qcChecksFileOutput, pipelineFunnelFileOutput, distributionsFileOutput],
+		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput, qcChecksFileOutput, pipelineFunnelFileOutput, distributionsFileOutput, parsedMicOutput, parseReportOutput],
 		{
 			aggregate: [{
 				name: "pl7.app/sequencing/lane",
@@ -377,7 +406,10 @@ wf.body(func(args) {
 		aaComposition: file.exportFile(aaCompositionFile),
 		qcChecks: file.exportFile(qcChecksFile),
 		pipelineFunnel: file.exportFile(pipelineFunnelFile),
-		distributions: file.exportFile(distributionsFile)
+		distributions: file.exportFile(distributionsFile),
+		// Kept reachable so parse outputs are persisted by content hash (dedup).
+		parsedMic: perSampleResults.outputData("parsedMic"),
+		parseReport: perSampleResults.outputData("parseReport")
 	}
 
 	exports := {

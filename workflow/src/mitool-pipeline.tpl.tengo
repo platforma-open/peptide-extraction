@@ -8,6 +8,7 @@
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+pcolumn := import("@platforma-sdk/workflow-tengo:pframes.pcolumn")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
@@ -16,14 +17,15 @@ render := import("@platforma-sdk/workflow-tengo:render")
 
 json := import("json")
 
-self.defineOutputs("tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions")
+self.defineOutputs(
+	"tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions",
+	"parsedMic", "parseReport"
+)
 
-mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
 parseGateSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:parse-gate")
 
+parseTpl := assets.importTemplate(":parse")
 downstreamTpl := assets.importTemplate(":downstream-pipeline")
-
-progressPrefix := "[==PROGRESS==]"
 
 self.body(func(inputs) {
 	inputData := inputs[pConstants.VALUE_FIELD_NAME]
@@ -125,33 +127,22 @@ self.body(func(inputs) {
 	// Step 1: mitool parse
 	// =========================================================================
 
-	parseCmd := exec.builder().
-		writeFile("parsed.mic", bytes(0)).
-		writeFile("parse_report.txt", "").
-		printErrStreamToStdout().
-		saveStdoutStream().
-		env("MI_PROGRESS_PREFIX", progressPrefix).
-		software(mitoolSw).
-		cpu(mitoolCPUs).
-		mem(mitoolMem).
-		arg("parse").
-		arg("--pattern").arg(pattern).
-		arg("--max-error-budget").arg(string(errorBudget)).
-		arg("--threads").argWithVar("{system.cpu}").
-		arg(inputArg)
+	inputFilesBuilder := pcolumn.resourceMapBuilder(1)
+	for f in R1Files { inputFilesBuilder.add([f.name], f.file) }
+	for f in R2Files { inputFilesBuilder.add([f.name], f.file) }
 
-	for f in R1Files { parseCmd = parseCmd.addFile(f.name, f.file) }
-	for f in R2Files { parseCmd = parseCmd.addFile(f.name, f.file) }
+	parseRun := render.create(parseTpl, {
+		pattern: pattern,
+		errorBudget: errorBudget,
+		mitoolCPUs: mitoolCPUs,
+		mitoolMemGB: mitoolMemGB,
+		inputArg: inputArg,
+		inputFiles: inputFilesBuilder.build()
+	})
 
-	parseCmd = parseCmd.
-		arg("--report").arg("parse_report.txt").
-		arg("parsed.mic").
-		saveFile("parsed.mic").
-		saveFile("parse_report.txt").
-		run()
-
-	parsedMic := parseCmd.getFile("parsed.mic")
-	parseReport := parseCmd.getFile("parse_report.txt")
+	parsedMic := parseRun.output("parsedMic")
+	parseReport := parseRun.output("parseReport")
+	parseLogStream := parseRun.output("parseLogStream")
 
 	// =========================================================================
 	// Parse gate: decide whether to continue based on the matched-reads count.
@@ -159,24 +150,18 @@ self.body(func(inputs) {
 	// can only be inspected in a template that receives the file as input.
 	// =========================================================================
 
-	// parse-gate also emits a normalized copy of parse_report.txt with
-	// mitool's non-deterministic "Execution time: …" line stripped.
 	gateCmd := exec.builder().
 		writeFile("decision.json", "").
-		writeFile("parse_report_normalized.txt", "").
 		software(parseGateSw).
 		cpu(1).
 		mem("256MiB").
 		arg("parse_report.txt").
 		arg("decision.json").
-		arg("parse_report_normalized.txt").
 		addFile("parse_report.txt", parseReport).
 		saveFileContent("decision.json").
-		saveFile("parse_report_normalized.txt").
 		run()
 
 	decision := gateCmd.getFileContent("decision.json")
-	parseReportNormalized := gateCmd.getFile("parse_report_normalized.txt")
 
 	// =========================================================================
 	// Hand off to the downstream subtemplate — it will branch on `decision`.
@@ -185,8 +170,8 @@ self.body(func(inputs) {
 	downstream := render.create(downstreamTpl, {
 		decision: decision,
 		parsedMic: parsedMic,
-		parseReport: parseReportNormalized,
-		parseLogStream: parseCmd.getStdoutStream(),
+		parseReport: parseReport,
+		parseLogStream: parseLogStream,
 		patternParts: parts,
 		errorBudget: errorBudget,
 		maxIndels: maxIndels,
@@ -204,6 +189,10 @@ self.body(func(inputs) {
 		stepLogs: downstream.output("stepLogs"),
 		qcChecks: downstream.output("qcChecks"),
 		pipelineFunnel: downstream.output("pipelineFunnel"),
-		distributions: downstream.output("distributions")
+		distributions: downstream.output("distributions"),
+		// Surface parse outputs so they reach main.tpl.tengo's outputs and are
+		// persisted by content hash — needed for graph-level dedup.
+		parsedMic: parsedMic,
+		parseReport: parseReport
 	}
 })
