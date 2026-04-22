@@ -634,7 +634,7 @@ const previewSegments = computed((): Segment[] => {
         </div>
         <PlTextField
           :model-value="r1.leftAnchor"
-          label="Left anchor"
+          label="5' anchor"
           placeholder="e.g. gctagcaacgatgactcgacatggcc"
           :required="true"
           :error="r1Errors.leftAnchor ?? undefined"
@@ -646,7 +646,7 @@ const previewSegments = computed((): Segment[] => {
         </PlTextField>
         <PlTextField
           :model-value="r1.rightAnchor"
-          label="Right anchor"
+          label="3' anchor"
           placeholder="e.g. tgcagtacgtagtcggatctag"
           :required="true"
           :error="r1Errors.rightAnchor ?? undefined"
@@ -714,7 +714,7 @@ const previewSegments = computed((): Segment[] => {
         </div>
         <PlTextField
           :model-value="r2.leftAnchor"
-          label="Left anchor"
+          label="5' anchor"
           placeholder="e.g. ctagatccgactacgtactgca"
           :required="true"
           :disabled="isGenerateMode"
@@ -727,7 +727,7 @@ const previewSegments = computed((): Segment[] => {
         </PlTextField>
         <PlTextField
           :model-value="r2.rightAnchor"
-          label="Right anchor"
+          label="3' anchor"
           placeholder="e.g. cgatctagctgacagtcatcgttgctagc"
           :required="true"
           :disabled="isGenerateMode"
