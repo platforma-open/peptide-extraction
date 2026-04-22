@@ -9,6 +9,7 @@ import {
 } from "@platforma-sdk/model";
 import type { PatternParts } from "./pattern";
 import { applyWildcards, parsePattern } from "./pattern";
+import { getPreset } from "./presets";
 
 export { parsePattern } from "./pattern";
 export type { LengthRange, PatternHalf, PatternParts } from "./pattern";
@@ -196,13 +197,24 @@ export const platforma = BlockModelV3.create(dataModel)
   .sections((_ctx) => [
     { type: "link", href: "/", label: "Main" },
     { type: "link", href: "/qc", label: "QC Report Table" },
-    { type: "link", href: "/results", label: "Results" },
   ])
 
   .args((data) => {
     if (!data.input) throw new Error("Input dataset is required");
-    if (!data.pattern) throw new Error("Tag pattern is required");
-    const patternParts = parsePattern(data.pattern);
+    // In preset mode, the pattern is defined by the selected preset, not by
+    // data.pattern (which holds the last Custom-mode edit). This guarantees
+    // that toggling back to Built-in preset always runs the preset's pattern.
+    const source = data.patternSource ?? "preset";
+    let effectiveSourcePattern: string | undefined;
+    if (source === "preset") {
+      const preset = getPreset(data.presetId);
+      if (!preset) throw new Error("Select a preset");
+      effectiveSourcePattern = preset.pattern;
+    } else {
+      effectiveSourcePattern = data.pattern;
+    }
+    if (!effectiveSourcePattern) throw new Error("Tag pattern is required");
+    const patternParts = parsePattern(effectiveSourcePattern);
     if (!patternParts)
       throw new Error(
         "Tag pattern is invalid. For each read must have the shape " +
@@ -223,8 +235,10 @@ export const platforma = BlockModelV3.create(dataModel)
     const useWildcards = data.useWildcards ?? true;
     return {
       input: data.input,
-      pattern: data.pattern,
-      effectivePattern: useWildcards ? applyWildcards(data.pattern!) : data.pattern,
+      pattern: effectiveSourcePattern,
+      effectivePattern: useWildcards
+        ? applyWildcards(effectiveSourcePattern)
+        : effectiveSourcePattern,
       patternParts,
       useWildcards: useWildcards,
       minReadsPerConsensus: data.minReadsPerConsensus,

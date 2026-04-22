@@ -19,7 +19,7 @@ catalog:
   "@platforma-sdk/blocks-deps-updater": 2.2.0
 
   "@platforma-open/milaboratories.runenv-python-3": 1.7.10
-  "@platforma-open/milaboratories.software-mitool": 2.3.1-46-main
+  "@platforma-open/milaboratories.software-mitool": 2.3.1-52-main
 
   "ag-grid-enterprise": &ag-grid ~34.1.2
   "ag-grid-vue3": *ag-grid
