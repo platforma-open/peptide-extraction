@@ -81,10 +81,21 @@ const presetOptions = computed((): ListOption<string>[] =>
 
 const selectedPreset = computed(() => getPreset(app.model.data.presetId));
 
+const isUserConfigurablePreset = computed(() => selectedPreset.value?.userConfigurable === true);
+
 function setPresetId(id: string | undefined) {
   app.model.data.presetId = id;
   const p = getPreset(id);
-  if (p) app.model.data.pattern = p.pattern;
+  if (!p) return;
+  if (p.userConfigurable) {
+    // Initialise r1 with the preset's fixed structural assumptions; user fills
+    // in anchors + lengths via the small form below. R2 is auto-generated.
+    r1.hasUmi = true;
+    app.model.data.r2Mode = "generate";
+    reassembleFromFields();
+  } else {
+    app.model.data.pattern = p.pattern;
+  }
 }
 
 // ── Mode ───────────────────────────────────────────────────────────────────
@@ -377,11 +388,14 @@ function reassembleFromFields() {
   }
 }
 
-// Fields → pattern: only in Build mode. In Write mode, the raw text is the source of truth.
+// Fields → pattern: fires in Build mode, and also when a user-configurable
+// preset is active (the preset form drives r1 state).
 watch(
   [r1, r2, () => app.model.data.r2Mode, () => app.model.data.useWildcards],
   () => {
-    if (editorMode.value === "build") reassembleFromFields();
+    const inBuild =
+      (app.model.data.patternSource ?? "preset") === "custom" && editorMode.value === "build";
+    if (inBuild || isUserConfigurablePreset.value) reassembleFromFields();
   },
   { deep: true },
 );
@@ -555,6 +569,54 @@ const previewSegments = computed((): Segment[] => {
       clearable
       @update:model-value="setPresetId"
     />
+
+    <!-- User-configurable preset: small form (anchors, insert length, UMI length) -->
+    <template v-if="isUserConfigurablePreset">
+      <PlTextField
+        :model-value="r1.leftAnchor"
+        label="5' anchor"
+        :required="true"
+        :error="r1Errors.leftAnchor ?? undefined"
+        @update:model-value="(v) => (r1.leftAnchor = v || undefined)"
+      />
+      <PlTextField
+        :model-value="r1.rightAnchor"
+        label="3' anchor"
+        :required="true"
+        :error="r1Errors.rightAnchor ?? undefined"
+        @update:model-value="(v) => (r1.rightAnchor = v || undefined)"
+      />
+      <PlCheckbox v-model="r1.hasInsertLength">Delimited insert length</PlCheckbox>
+      <div v-if="r1.hasInsertLength" :class="$style.row">
+        <PlNumberField
+          v-model="r1.insertMin"
+          label="Insert min length"
+          :min-value="1"
+          :required="true"
+        />
+        <PlNumberField
+          v-model="r1.insertMax"
+          label="Insert max length"
+          :min-value="r1.insertMin ?? 1"
+          :clearable="true"
+        />
+      </div>
+      <div :class="$style.row">
+        <PlNumberField
+          v-model="r1.umiMin"
+          label="UMI min length"
+          :min-value="1"
+          :required="true"
+          :error-message="r1Errors.umi ?? undefined"
+        />
+        <PlNumberField
+          v-model="r1.umiMax"
+          label="UMI max length"
+          :min-value="r1.umiMin ?? 1"
+          :clearable="true"
+        />
+      </div>
+    </template>
   </template>
 
   <!-- Custom pattern source: existing Add / Build editor -->

@@ -209,7 +209,9 @@ export const platforma = BlockModelV3.create(dataModel)
     if (source === "preset") {
       const preset = getPreset(data.presetId);
       if (!preset) throw new Error("Select a preset");
-      effectiveSourcePattern = preset.pattern;
+      // User-configurable presets (e.g. generic amplicon) let the user fill
+      // in a small form; the assembled pattern lives in data.pattern.
+      effectiveSourcePattern = preset.userConfigurable ? data.pattern : preset.pattern;
     } else {
       effectiveSourcePattern = data.pattern;
     }
