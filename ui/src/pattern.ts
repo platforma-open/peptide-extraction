@@ -12,6 +12,11 @@ function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
 
   const prefix = h.hasLeadingWildcard ? "*" : "";
 
+  // Heterogeneity spacer (anonymous N-span) comes between ^[*] and the UMI.
+  const hetSpacerPart = h.hetSpacer
+    ? `N{${h.hetSpacer.min === h.hetSpacer.max ? h.hetSpacer.min : `${h.hetSpacer.min}:${h.hetSpacer.max}`}}`
+    : "";
+
   // UMI is optional
   let umiPart = "";
   if (h.umi) {
@@ -43,7 +48,7 @@ function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
       : defaultTrim(anchorLen, mandatory);
   const trim = trimValue !== undefined ? `>{${trimValue}}` : "";
 
-  return `^${prefix}${umiPart}${h.leftAnchor}(${insertLabel}:${insertPart})${h.rightAnchor}${trim}*`;
+  return `^${prefix}${hetSpacerPart}${umiPart}${h.leftAnchor}(${insertLabel}:${insertPart})${h.rightAnchor}${trim}*`;
 }
 
 /** Assemble PatternParts back into a pattern string. Case is normalized to lowercase. */
@@ -136,6 +141,7 @@ export function generateR2fromR1(r1: PatternHalf): PatternHalf {
     rightTrim: defaultTrim(rightAnchor.length, R2_MANDATORY_RIGHT_ANCHOR_BP),
     insertLength: r1.insertLength,
     hasLeadingWildcard: r1.hasLeadingWildcard,
+    hetSpacer: r1.hetSpacer ? { ...r1.hetSpacer } : undefined,
   };
 }
 

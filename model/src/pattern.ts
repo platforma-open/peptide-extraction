@@ -16,6 +16,10 @@ export type PatternHalf = {
   rightTrim?: number;
   insertLength?: InsertLength; // undefined = variable (`*`)
   hasLeadingWildcard?: boolean; // pattern starts with `^*` before the (optional) UMI/anchor
+  /** Anonymous `N{min:max}` span between `^[*]?` and the UMI. Used for
+   *  heterogeneity spacers that diversify Illumina cluster signal without
+   *  serving as a molecular barcode. */
+  hetSpacer?: LengthRange;
 };
 
 export type PatternParts = {
@@ -23,25 +27,29 @@ export type PatternParts = {
   r2?: PatternHalf;
 };
 
-// Matches one half of a mitool parse pattern. All parts except the R capture
-// and trailing `*` are optional:
+// Matches one half of a mitool parse pattern. Every part except the trailing
+// `*` is optional, including the peptide `(R<n>:...)` capture. A half with no
+// R capture is valid when the read carries only UMI/flanks/spacer and the
+// peptide insert lives on the other read:
 //
-//   ^[*][(umiName:N{min[:max]})][leftAnchor](insertName:*|N{n}|N{min:max})[rightAnchor][>{trim}]*
+//   ^[*][N{min[:max]}][(umiName:N{min[:max]})][leftAnchor][(insertName:*|N{n}|N{min:max})[rightAnchor]][>{trim}]*
 //
 // Groups:
-//   1 = leading wildcard (`*`) or empty
-//   2 = umiName (if UMI present)
-//   3 = umiMin
-//   4 = umiMax (or empty when min == max)
-//   5 = leftAnchor (may be empty)
-//   6 = insertName (R1, R2, ...)
-//   7 = `*` when the capture is variable-length
-//   8 = insertLength min (fixed or ranged)
-//   9 = insertLength max (only when ranged)
-//   10 = rightAnchor (may be empty)
-//   11 = right trim (or empty)
+//   1  = leading wildcard (`*`) or empty
+//   2  = heterogeneity spacer min (if spacer present)
+//   3  = heterogeneity spacer max (or empty when min == max)
+//   4  = umiName (if UMI present)
+//   5  = umiMin
+//   6  = umiMax (or empty when min == max)
+//   7  = leftAnchor (may be empty)
+//   8  = insertName (R1, R2, ...) — absent when the half has no R capture
+//   9  = `*` when the capture is variable-length
+//   10 = insertLength min (fixed or ranged)
+//   11 = insertLength max (only when ranged)
+//   12 = rightAnchor (may be empty)
+//   13 = right trim (or empty)
 const HALF_RE =
-  /^\^(\*)?(?:\(([Uu][Mm][Ii]\d*):N\{(\d+)(?::(\d+))?\}\))?([A-Za-z]*)\(([Rr]\d+):(?:(\*)|N\{(\d+)(?::(\d+))?\})\)([A-Za-z]*)(?:>\{(\d+)\})?\*$/;
+  /^\^(\*)?(?:N\{(\d+)(?::(\d+))?\})?(?:\(([Uu][Mm][Ii]\d*):N\{(\d+)(?::(\d+))?\}\))?([A-Za-z]*)(?:\(([Rr]\d+):(?:(\*)|N\{(\d+)(?::(\d+))?\})\)([A-Za-z]*))?(?:>\{(\d+)\})?\*$/;
 
 function parseHalf(s: string): PatternHalf | null {
   const m = HALF_RE.exec(s.trim());
@@ -49,32 +57,42 @@ function parseHalf(s: string): PatternHalf | null {
 
   const hasLeadingWildcard = m[1] === "*";
 
+  let hetSpacer: LengthRange | undefined;
+  if (m[2] !== undefined) {
+    const min = parseInt(m[2], 10);
+    const max = m[3] !== undefined && m[3] !== "" ? parseInt(m[3], 10) : min;
+    hetSpacer = { min, max };
+  }
+
   let umi: LengthRange | undefined;
   let umiName: string | undefined;
-  if (m[2] !== undefined) {
-    umiName = m[2];
-    const min = parseInt(m[3], 10);
-    const max = m[4] !== undefined && m[4] !== "" ? parseInt(m[4], 10) : min;
+  if (m[4] !== undefined) {
+    umiName = m[4];
+    const min = parseInt(m[5], 10);
+    const max = m[6] !== undefined && m[6] !== "" ? parseInt(m[6], 10) : min;
     umi = { min, max };
   }
 
-  const leftAnchor = m[5] ?? "";
-  const insertName = m[6];
+  const leftAnchor = m[7] ?? "";
+  const insertName = m[8]; // undefined when the half has no (R<n>:...) capture
 
   let insertLength: InsertLength;
-  if (m[7] === "*") {
+  if (insertName === undefined) {
+    insertLength = undefined;
+  } else if (m[9] === "*") {
     insertLength = undefined; // variable
   } else {
-    const min = parseInt(m[8], 10);
-    const max = m[9] !== undefined && m[9] !== "" ? parseInt(m[9], 10) : min;
+    const min = parseInt(m[10], 10);
+    const max = m[11] !== undefined && m[11] !== "" ? parseInt(m[11], 10) : min;
     insertLength = min === max ? min : { min, max };
   }
 
-  const rightAnchor = m[10] ?? "";
-  const rightTrim = m[11] !== undefined && m[11] !== "" ? parseInt(m[11], 10) : undefined;
+  const rightAnchor = insertName !== undefined ? (m[12] ?? "") : "";
+  const rightTrim = m[13] !== undefined && m[13] !== "" ? parseInt(m[13], 10) : undefined;
 
   return {
     hasLeadingWildcard,
+    hetSpacer,
     umi,
     umiName,
     leftAnchor,
@@ -100,10 +118,20 @@ function replaceHomopolymers(anchor: string, allowTrailing = false): string {
 
 function assembleHalf(h: PatternHalf): string {
   const prefix = h.hasLeadingWildcard ? "*" : "";
+  const hetSpacerPart = h.hetSpacer
+    ? `N{${h.hetSpacer.min === h.hetSpacer.max ? h.hetSpacer.min : `${h.hetSpacer.min}:${h.hetSpacer.max}`}}`
+    : "";
   const umiPart =
     h.umi && h.umiName
       ? `(${h.umiName}:N{${h.umi.min === h.umi.max ? h.umi.min : `${h.umi.min}:${h.umi.max}`}})`
       : "";
+
+  // Insert-less halves: just UMI/anchor/spacer + wildcard, no (R<n>:...) capture.
+  if (h.insertName === undefined) {
+    const trim = h.rightTrim !== undefined ? `>{${h.rightTrim}}` : "";
+    return `^${prefix}${hetSpacerPart}${umiPart}${h.leftAnchor}${trim}*`;
+  }
+
   let insertLenPart: string;
   if (h.insertLength === undefined) {
     insertLenPart = "*";
@@ -116,7 +144,7 @@ function assembleHalf(h: PatternHalf): string {
         : `N{${h.insertLength.min}:${h.insertLength.max}}`;
   }
   const trim = h.rightTrim !== undefined ? `>{${h.rightTrim}}` : "";
-  return `^${prefix}${umiPart}${h.leftAnchor}(${h.insertName}:${insertLenPart})${h.rightAnchor}${trim}*`;
+  return `^${prefix}${hetSpacerPart}${umiPart}${h.leftAnchor}(${h.insertName}:${insertLenPart})${h.rightAnchor}${trim}*`;
 }
 
 /** Apply wildcard replacement to homopolymer runs in all anchors. Returns the modified pattern. */

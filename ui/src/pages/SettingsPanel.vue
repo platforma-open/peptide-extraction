@@ -40,7 +40,6 @@ const hasUmi = computed(() => {
     @update:model-value="(v) => (app.model.data.input = v)"
   />
 
-  <PlSectionSeparator>Tag pattern</PlSectionSeparator>
   <PatternEditor />
 
   <PlAccordionSection label="Advanced settings">

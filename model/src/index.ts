@@ -16,17 +16,14 @@ export type { LengthRange, PatternHalf, PatternParts } from "./pattern";
 export { allPresets, getPreset, presetsById } from "./presets";
 export type { Preset } from "./presets";
 
-export type PatternSource = "preset" | "custom";
-
 export type BlockData = {
   defaultBlockLabel?: string;
   customBlockLabel?: string;
   input?: PlRef;
-  patternSource?: PatternSource;
   presetId?: string;
   pattern?: string;
   patternParts?: PatternParts;
-  r2Mode?: "generate" | "manual";
+  readLayout?: "single-end" | "paired-end";
   useWildcards?: boolean;
   minReadsPerConsensus?: number;
   errorBudget?: number;
@@ -71,9 +68,8 @@ const dataModel = new DataModelBuilder()
     filterInvalidPeptides: true,
     qcTableState: createPlDataTableStateV2(),
     resultsTableState: createPlDataTableStateV2(),
-    r2Mode: "generate" as const,
+    readLayout: "single-end" as const,
     useWildcards: true,
-    patternSource: "preset" as const,
   }));
 
 export const platforma = BlockModelV3.create(dataModel)
@@ -215,20 +211,12 @@ export const platforma = BlockModelV3.create(dataModel)
 
   .args((data) => {
     if (!data.input) throw new Error("Input dataset is required");
-    // In preset mode, the pattern is defined by the selected preset, not by
-    // data.pattern (which holds the last Custom-mode edit). This guarantees
-    // that toggling back to Built-in preset always runs the preset's pattern.
-    const source = data.patternSource ?? "preset";
-    let effectiveSourcePattern: string | undefined;
-    if (source === "preset") {
-      const preset = getPreset(data.presetId);
-      if (!preset) throw new Error("Select a preset");
-      // User-configurable presets (e.g. generic amplicon) let the user fill
-      // in a small form; the assembled pattern lives in data.pattern.
-      effectiveSourcePattern = preset.userConfigurable ? data.pattern : preset.pattern;
-    } else {
-      effectiveSourcePattern = data.pattern;
-    }
+    const preset = getPreset(data.presetId);
+    if (!preset) throw new Error("Select a preset");
+    // Fixed-kit presets carry the pattern directly. User-configurable presets
+    // (e.g. generic amplicon) let the user fill in a form and the assembled
+    // pattern lives in data.pattern.
+    const effectiveSourcePattern = preset.userConfigurable ? data.pattern : preset.pattern;
     if (!effectiveSourcePattern) throw new Error("Tag pattern is required");
     const patternParts = parsePattern(effectiveSourcePattern);
     if (!patternParts)
