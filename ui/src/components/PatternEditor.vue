@@ -369,6 +369,8 @@ function halfEquals(a: PatternHalf, b: PatternHalf): boolean {
   return (
     umiEq &&
     hetEq &&
+    (a.hasLeadingWildcard === true) === (b.hasLeadingWildcard === true) &&
+    (a.insertName !== undefined) === (b.insertName !== undefined) &&
     a.leftAnchor === b.leftAnchor &&
     a.rightAnchor === b.rightAnchor &&
     a.rightTrim === b.rightTrim &&
@@ -405,6 +407,14 @@ function clearHalf(fields: HalfFields) {
 
 const lastAssembled = ref<string | undefined>(undefined);
 
+/** Whether Read 2's half is currently a straight mirror of Read 1's. Starts
+ *  true (mirror is the default for a fresh template) and flips to false when
+ *  we parse a pattern where Read 2 diverges from RC of Read 1 — e.g. the user
+ *  pasted a custom paired-end pattern in Define mode. When false, the Read 1
+ *  → Read 2 mirror watcher stops firing so the user's intentional divergence
+ *  survives Define → Build round-trips and subsequent Read 1 edits. */
+const r2FollowsR1 = ref<boolean>(true);
+
 // Main field → accordion fields
 watch(
   () => app.model.data.pattern,
@@ -413,6 +423,7 @@ watch(
     if (!pattern) {
       clearHalf(r1);
       clearHalf(r2);
+      r2FollowsR1.value = true;
       return;
     }
     const parsed = parsePattern(pattern);
@@ -427,9 +438,15 @@ watch(
     if (parsed.r2) {
       setFieldsFromHalf(r2, parsed.r2);
       app.model.data.readLayout = "paired-end";
+      // Detect divergence: if the parsed Read 2 half doesn't equal what the
+      // mirror would produce from the parsed Read 1 half, treat Read 2 as
+      // user-customised and stop auto-mirroring until it is cleared.
+      const expectedR2 = generateR2fromR1(parsed.r1);
+      r2FollowsR1.value = halfEquals(parsed.r2, expectedR2);
     } else {
       clearHalf(r2);
       app.model.data.readLayout = "single-end";
+      r2FollowsR1.value = true;
     }
   },
   { immediate: true },
@@ -492,12 +509,15 @@ watch(editorMode, (mode) => {
 // pairs are reverse-complemented; UMI, spacer, insert length are copied.
 // User edits to Read 2 persist until the next Read 1 change. Only fires in
 // Build mode — in Define mode the raw pattern text is authoritative and
-// Read 2 state comes from parsing it.
+// Read 2 state comes from parsing it. Also skipped when Read 2 has been
+// explicitly diverged (e.g. the user pasted a non-mirror pattern in Define
+// mode), so the round-trip Define → Build preserves the custom Read 2.
 watch(
   [isPairedEnd, r1],
   () => {
     if (!isPairedEnd.value) return;
     if (editorMode.value !== "build") return;
+    if (!r2FollowsR1.value) return;
     if (!r1.rightAnchor) return; // need Read 1's 3' anchor to derive Read 2's 5' anchor
     const half1 = fieldsToHalf(r1);
     if (!half1) return;
