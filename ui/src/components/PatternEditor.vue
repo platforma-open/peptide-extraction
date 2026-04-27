@@ -658,11 +658,6 @@ const previewSegments = computed((): Segment[] => {
     @update:model-value="setPresetId"
   />
 
-  <!-- Fixed-kit preset: show the description as a read-only blurb. Pattern is locked to the preset. -->
-  <div v-if="selectedPreset && !isUserConfigurablePreset" :class="$style.presetInfo">
-    {{ selectedPreset.description }}
-  </div>
-
   <!-- User-configurable preset: unlock the full Add/Build editor. -->
   <template v-if="isUserConfigurablePreset">
     <PlBtnGroup v-model="editorMode" :options="editorModeOptions" :class="$style.fullWidthGroup" />
@@ -957,15 +952,6 @@ const previewSegments = computed((): Segment[] => {
 <style module>
 .fullWidthGroup {
   width: 100%;
-}
-
-.presetInfo {
-  font-size: 12px;
-  color: var(--pl-text-secondary, #666);
-  padding: 6px 10px;
-  background: var(--pl-surface-secondary, #f7f7f7);
-  border-radius: 4px;
-  line-height: 1.4;
 }
 
 .readTabs {
