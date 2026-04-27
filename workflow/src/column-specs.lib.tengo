@@ -308,62 +308,7 @@ columnsAggregatedFn := func(hasUmi) {
 				"pl7.app/label": "Peptide Id"
 			})
 		}
-	},
-	// Property columns — computed by Python but not yet in the formal spec.
-	// Remove when downstream blocks produce them instead.
-	// {
-	// 	column: "peptideCharge",
-	// 	id: "peptide-charge",
-	// 	allowNA: false,
-	// 	spec: {
-	// 		name: "pl7.app/charge",
-	// 		valueType: "Double",
-	// 		annotations: a(70000, true, {
-	// 			"pl7.app/label": "Net Charge (pH 7)",
-	// 			"pl7.app/format": ".2f"
-	// 		})
-	// 	}
-	// },
-	// {
-	// 	column: "peptideHydrophobicity",
-	// 	id: "peptide-hydrophobicity",
-	// 	allowNA: false,
-	// 	spec: {
-	// 		name: "pl7.app/hydrophobicity",
-	// 		valueType: "Double",
-	// 		annotations: a(69900, true, {
-	// 			"pl7.app/label": "Hydrophobicity (GRAVY)",
-	// 			"pl7.app/format": ".3f"
-	// 		})
-	// 	}
-	// },
-	// {
-	// 	column: "peptideMolecularWeight",
-	// 	id: "peptide-molecular-weight",
-	// 	allowNA: false,
-	// 	spec: {
-	// 		name: "pl7.app/molecularWeight",
-	// 		valueType: "Double",
-	// 		annotations: a(69800, true, {
-	// 			"pl7.app/label": "Molecular Weight (Da)",
-	// 			"pl7.app/format": ".1f"
-	// 		})
-	// 	}
-	// },
-	// {
-	// 	column: "peptideIsoelectricPoint",
-	// 	id: "peptide-isoelectric-point",
-	// 	allowNA: false,
-	// 	spec: {
-	// 		name: "pl7.app/isoelectricPoint",
-	// 		valueType: "Double",
-	// 		annotations: a(69700, true, {
-	// 			"pl7.app/label": "Isoelectric Point (pI)",
-	// 			"pl7.app/format": ".2f"
-	// 		})
-	// 	}
-	// },
-	{
+	}, {
 		column: "hasTrailingNucleotides",
 		id: "has-trailing-nucleotides",
 		allowNA: false,

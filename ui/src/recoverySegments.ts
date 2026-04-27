@@ -115,11 +115,11 @@ export function buildRecoverySegments(
     },
     {
       key: "assembly",
-      label: "Discordant UMI group",
+      label: "Discordant reads in UMI group",
       value: assembly,
       color: colors.assembly,
       description:
-        "Read pairs whose R1 or R2 disagreed with their UMI group's consensus — typically from sequencing errors or R2 truncation.",
+        "Reads that share a UMI but whose insert/peptide didn't match the rest of their group. The two common causes are sequencing errors and Read 2 truncation.",
     },
   ];
 

@@ -16,6 +16,14 @@ export type { LengthRange, PatternHalf, PatternParts } from "./pattern";
 export { allPresets, getPreset, presetsById } from "./presets";
 export type { Preset } from "./presets";
 
+export type StopCodonType = "amber" | "ochre" | "opal";
+
+export type StopCodonReplacements = {
+  amber?: string;
+  ochre?: string;
+  opal?: string;
+};
+
 export type BlockData = {
   defaultBlockLabel?: string;
   customBlockLabel?: string;
@@ -30,6 +38,8 @@ export type BlockData = {
   maxIndels?: number;
   autoR1OnlyAssembly?: boolean;
   filterInvalidPeptides?: boolean;
+  stopCodonTypes?: StopCodonType[];
+  stopCodonReplacements?: StopCodonReplacements;
   perProcessMemGB?: number;
   perProcessCPUs?: number;
   qcTableState: PlDataTableStateV2;
@@ -250,6 +260,8 @@ export const platforma = BlockModelV3.create(dataModel)
       maxIndels: data.maxIndels,
       autoR1OnlyAssembly: data.autoR1OnlyAssembly,
       filterInvalidPeptides: data.filterInvalidPeptides ?? true,
+      stopCodonTypes: data.stopCodonTypes,
+      stopCodonReplacements: data.stopCodonReplacements,
       perProcessMemGB: data.perProcessMemGB,
       perProcessCPUs: data.perProcessCPUs,
       defaultBlockLabel: data.defaultBlockLabel ?? "",

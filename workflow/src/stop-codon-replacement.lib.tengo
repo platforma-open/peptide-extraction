@@ -1,0 +1,86 @@
+// Stop-codon replacement helpers for pt-native nucleotide → amino acid
+// translation. Adapted from mixcr-clonotyping's stop-codon-replacement.lib.tengo
+// for the simpler peptide-extraction case (one NT column per row).
+
+pt := import("@platforma-sdk/workflow-tengo:pt")
+text := import("text")
+
+// Standard genetic code. Stops are emitted as "*".
+codonMapBase := {
+	"TTT": "F", "TTC": "F", "TTA": "L", "TTG": "L",
+	"TCT": "S", "TCC": "S", "TCA": "S", "TCG": "S",
+	"TAT": "Y", "TAC": "Y", "TAA": "*", "TAG": "*",
+	"TGT": "C", "TGC": "C", "TGA": "*", "TGG": "W",
+	"CTT": "L", "CTC": "L", "CTA": "L", "CTG": "L",
+	"CCT": "P", "CCC": "P", "CCA": "P", "CCG": "P",
+	"CAT": "H", "CAC": "H", "CAA": "Q", "CAG": "Q",
+	"CGT": "R", "CGC": "R", "CGA": "R", "CGG": "R",
+	"ATT": "I", "ATC": "I", "ATA": "I", "ATG": "M",
+	"ACT": "T", "ACC": "T", "ACA": "T", "ACG": "T",
+	"AAT": "N", "AAC": "N", "AAA": "K", "AAG": "K",
+	"AGT": "S", "AGC": "S", "AGA": "R", "AGG": "R",
+	"GTT": "V", "GTC": "V", "GTA": "V", "GTG": "V",
+	"GCT": "A", "GCC": "A", "GCA": "A", "GCG": "A",
+	"GAT": "D", "GAC": "D", "GAA": "E", "GAG": "E",
+	"GGT": "G", "GGC": "G", "GGA": "G", "GGG": "G"
+}
+
+// Build a codon table where selected stops are remapped to user-chosen amino
+// acids. Stops not in `stopCodonTypes` (or with empty replacement) stay as "*".
+//
+//   stopCodonTypes:        array, e.g. ["amber", "ochre"]
+//   stopCodonReplacements: map, e.g. { amber: "Q", ochre: "Y" }
+buildReplaceCodonMap := func(stopCodonTypes, stopCodonReplacements) {
+	contains := func(arr, value) {
+		if is_undefined(arr) { return false }
+		for v in arr {
+			if v == value { return true }
+		}
+		return false
+	}
+
+	stopReplacement := func(stopType) {
+		if !contains(stopCodonTypes, stopType) { return "*" }
+		if is_undefined(stopCodonReplacements) { return "*" }
+		aa := stopCodonReplacements[stopType]
+		if is_undefined(aa) || aa == "" { return "*" }
+		return text.to_upper(aa)
+	}
+
+	out := {}
+	for codon, aa in codonMapBase {
+		if codon == "TAA" {
+			out[codon] = stopReplacement("ochre")
+		} else if codon == "TAG" {
+			out[codon] = stopReplacement("amber")
+		} else if codon == "TGA" {
+			out[codon] = stopReplacement("opal")
+		} else {
+			out[codon] = aa
+		}
+	}
+	return out
+}
+
+// Translate a nucleotide-column expression to amino acids using `codonMap`.
+// Steps: uppercase, insert "|" after every 3 chars (codon delimiter), replace
+// each codon with its AA letter, strip the delimiters, drop any trailing
+// 1-2 nt that didn't fit a codon. Result includes "*" for any stops that
+// survived the user's replacements.
+translateNtToAaPt := func(ntExpr, codonMap) {
+	seq := ntExpr.fillNull("").strToUpper()
+	seq = seq.strReplace("(.{3})", "$1|", { replaceAll: true })
+	for codon, aa in codonMap {
+		seq = seq.strReplace(codon + "|", aa + "|", { replaceAll: true, literal: true })
+	}
+	seq = seq.strReplace("\\|$", "", { replaceAll: false })
+	seq = seq.strReplace("|", "", { replaceAll: true, literal: true })
+	seq = seq.strReplace("[ACGT]{1,2}$", "", { replaceAll: true })
+	return seq
+}
+
+export {
+	codonMapBase: codonMapBase,
+	buildReplaceCodonMap: buildReplaceCodonMap,
+	translateNtToAaPt: translateNtToAaPt
+}

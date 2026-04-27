@@ -49,8 +49,8 @@ self.body(func(inputs) {
 			{ column: "aaSeqPeptide", type: "String" },
 			{ column: "aaLengthPeptide", type: "Int" },
 			{ column: "ntLengthPeptide", type: "Int" },
-			{ column: "hasTrailingNucleotides", type: "String" },
-			{ column: "hasEarlyStopCodon", type: "String" }
+			{ column: "hasTrailingNucleotides", type: "Boolean" },
+			{ column: "hasEarlyStopCodon", type: "Boolean" }
 		]
 	}, {
 		id: "props",
@@ -96,8 +96,8 @@ self.body(func(inputs) {
 			pt.col("variantKey").count().alias("uniquePeptides"),
 			pt.col("aaLengthPeptide").mean().alias("avgLengthAa"),
 			pt.col("ntLengthPeptide").mean().alias("avgLengthNt"),
-			pt.col("hasTrailingNucleotides").eq(pt.lit("true")).cast("Int").sum().alias("hasTrailingNucleotides"),
-			pt.col("hasEarlyStopCodon").eq(pt.lit("true")).cast("Int").sum().alias("hasEarlyStopCodon")
+			pt.col("hasTrailingNucleotides").cast("Int").sum().alias("hasTrailingNucleotides"),
+			pt.col("hasEarlyStopCodon").cast("Int").sum().alias("hasEarlyStopCodon")
 		]
 		if hasUmi {
 			qcSelectExprs = append(qcSelectExprs,
@@ -127,12 +127,12 @@ self.body(func(inputs) {
 		ratesDf := joined.select(
 			pt.lit(sampleId).alias("sampleId"),
 			pt.col(abundanceCol).cast("Double").sum().alias("_totalAbundance"),
-			pt.when(pt.col("hasTrailingNucleotides").eq(pt.lit("true"))).
+			pt.when(pt.col("hasTrailingNucleotides")).
 				then(pt.col(abundanceCol).cast("Double")).
 				otherwise(pt.lit(0.0)).
 				sum().
 				alias("_abundanceTrailing"),
-			pt.when(pt.col("hasEarlyStopCodon").eq(pt.lit("true"))).
+			pt.when(pt.col("hasEarlyStopCodon")).
 				then(pt.col(abundanceCol).cast("Double")).
 				otherwise(pt.lit(0.0)).
 				sum().

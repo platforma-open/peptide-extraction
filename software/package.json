@@ -28,15 +28,6 @@
       }
     },
     "entrypoints": {
-      "peptide-properties": {
-        "binary": {
-          "artifact": "py-archive",
-          "cmd": [
-            "python",
-            "{pkg}/peptide_properties.py"
-          ]
-        }
-      },
       "qc-checks": {
         "binary": {
           "artifact": "py-archive",

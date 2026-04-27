@@ -1,17 +1,93 @@
 <script setup lang="ts">
+import type {
+  StopCodonReplacements,
+  StopCodonType,
+} from "@platforma-open/milaboratories.peptide-extraction.model";
+import type { ListOption } from "@platforma-sdk/ui-vue";
 import {
   PlAccordionSection,
   PlCheckbox,
+  PlDropdown,
+  PlDropdownMulti,
   PlDropdownRef,
   PlNumberField,
   PlSectionSeparator,
   PlTooltip,
 } from "@platforma-sdk/ui-vue";
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { useApp } from "../app";
 import PatternEditor from "../components/PatternEditor.vue";
 
 const app = useApp();
+
+// ── Stop codon replacement options ──────────────────────────────────────────
+
+const stopCodonOptions: ListOption<StopCodonType>[] = [
+  { label: "Amber (TAG)", value: "amber" },
+  { label: "Ochre (TAA)", value: "ochre" },
+  { label: "Opal/Umber (TGA)", value: "opal" },
+];
+
+const aminoAcidOptions: ListOption<string>[] = [
+  { label: "A (Ala)", value: "A" },
+  { label: "C (Cys)", value: "C" },
+  { label: "D (Asp)", value: "D" },
+  { label: "E (Glu)", value: "E" },
+  { label: "F (Phe)", value: "F" },
+  { label: "G (Gly)", value: "G" },
+  { label: "H (His)", value: "H" },
+  { label: "I (Ile)", value: "I" },
+  { label: "K (Lys)", value: "K" },
+  { label: "L (Leu)", value: "L" },
+  { label: "M (Met)", value: "M" },
+  { label: "N (Asn)", value: "N" },
+  { label: "P (Pro)", value: "P" },
+  { label: "Q (Gln)", value: "Q" },
+  { label: "R (Arg)", value: "R" },
+  { label: "S (Ser)", value: "S" },
+  { label: "T (Thr)", value: "T" },
+  { label: "V (Val)", value: "V" },
+  { label: "W (Trp)", value: "W" },
+  { label: "Y (Tyr)", value: "Y" },
+];
+
+const stopCodonSelection = computed<StopCodonType[]>({
+  get: () => app.model.data.stopCodonTypes ?? [],
+  set: (value) => {
+    app.model.data.stopCodonTypes = value.length > 0 ? value : undefined;
+  },
+});
+
+const stopCodonReplacementModel = (type: StopCodonType) =>
+  computed<string | undefined>({
+    get: () => app.model.data.stopCodonReplacements?.[type],
+    set: (value) => {
+      const current: StopCodonReplacements = { ...(app.model.data.stopCodonReplacements ?? {}) };
+      if (value === undefined) {
+        delete current[type];
+        app.model.data.stopCodonReplacements =
+          Object.keys(current).length > 0 ? current : undefined;
+      } else {
+        current[type] = value;
+        app.model.data.stopCodonReplacements = current;
+      }
+    },
+  });
+
+const amberReplacement = stopCodonReplacementModel("amber");
+const ochreReplacement = stopCodonReplacementModel("ochre");
+const opalReplacement = stopCodonReplacementModel("opal");
+
+// Drop any orphaned per-type replacements when a stop type is deselected.
+watch(stopCodonSelection, (selected) => {
+  const current = app.model.data.stopCodonReplacements;
+  if (!current) return;
+  const next: StopCodonReplacements = { ...current };
+  for (const key of Object.keys(next) as StopCodonType[]) {
+    if (!selected.includes(key)) delete next[key];
+  }
+  app.model.data.stopCodonReplacements = Object.keys(next).length > 0 ? next : undefined;
+});
 
 const inputOptions = computed(() => app.model.outputs.inputOptions);
 
@@ -119,6 +195,37 @@ const hasUmi = computed(() => {
         </template>
       </PlTooltip>
     </PlCheckbox> -->
+
+    <PlSectionSeparator>Stop codon replacement</PlSectionSeparator>
+    <PlDropdownMulti
+      v-model="stopCodonSelection"
+      label="Stop codons"
+      :options="stopCodonOptions"
+      clearable
+    >
+      <template #tooltip>Select stop codons to replace in amino acid sequences.</template>
+    </PlDropdownMulti>
+    <PlDropdown
+      v-if="stopCodonSelection.includes('amber')"
+      v-model="amberReplacement"
+      :options="aminoAcidOptions"
+      label="Replace Amber (TAG) with"
+      clearable
+    />
+    <PlDropdown
+      v-if="stopCodonSelection.includes('ochre')"
+      v-model="ochreReplacement"
+      :options="aminoAcidOptions"
+      label="Replace Ochre (TAA) with"
+      clearable
+    />
+    <PlDropdown
+      v-if="stopCodonSelection.includes('opal')"
+      v-model="opalReplacement"
+      :options="aminoAcidOptions"
+      label="Replace Opal/Umber (TGA) with"
+      clearable
+    />
 
     <PlSectionSeparator>Resource Allocation</PlSectionSeparator>
     <PlNumberField

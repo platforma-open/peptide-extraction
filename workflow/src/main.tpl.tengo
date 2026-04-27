@@ -35,8 +35,6 @@ defaultCollapseMemGB := 4     // per-sample ptabler collapse (groupby on tag-sta
 defaultCollapseCPUs := 1
 defaultAggMinMemGB := 8       // ptabler aggregation (minimum, scales with sample count)
 defaultAggMinCPUs := 4        // ptabler aggregation (minimum, scales with sample count)
-defaultPropertiesMemGB := 4   // Python properties script (translation, properties)
-defaultPropertiesCPUs := 1
 defaultXsvMemGB := 16         // Xsv import (parquet conversion)
 defaultXsvCPUs := 2
 
@@ -325,13 +323,13 @@ wf.body(func(args) {
 			}],
 			//stepCache: 30 * times.minute,
 			extra: {
-				hasUmi: hasUmi
+				hasUmi: hasUmi,
+				stopCodonTypes: args.stopCodonTypes,
+				stopCodonReplacements: args.stopCodonReplacements
 			},
 			metaExtra: {
 				aggMinMemGB: defaultAggMinMemGB,
-				aggMinCPUs: defaultAggMinCPUs,
-				propertiesMemGB: defaultPropertiesMemGB,
-				propertiesCPUs: defaultPropertiesCPUs
+				aggMinCPUs: defaultAggMinCPUs
 			},
 			traceSteps: [{
 				type: "milaboratories.peptide-extraction.aggregate",

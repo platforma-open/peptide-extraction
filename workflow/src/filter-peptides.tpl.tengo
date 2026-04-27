@@ -48,20 +48,16 @@ self.body(func(inputs) {
 		mem(int(math.max(numberOfSamples * 2, 4)) * units.GiB).
 		cpu(1)
 
-	// Column order must match the TSV written by peptide_properties.py.
+	// Column order must match the TSV written by aggregate-peptides.tpl.tengo.
 	propertiesSchema := [
 		{ column: "variantKey", type: "String" },
 		{ column: "nSeqPeptide", type: "String" },
 		{ column: "aaSeqPeptide", type: "String" },
 		{ column: "ntLengthPeptide", type: "Int" },
 		{ column: "aaLengthPeptide", type: "Int" },
-		{ column: "peptideCharge", type: "Double" },
-		{ column: "peptideHydrophobicity", type: "Double" },
-		{ column: "peptideMolecularWeight", type: "Double" },
-		{ column: "peptideIsoelectricPoint", type: "Double" },
 		{ column: "peptideLabel", type: "String" },
-		{ column: "hasTrailingNucleotides", type: "String" },
-		{ column: "hasEarlyStopCodon", type: "String" }
+		{ column: "hasTrailingNucleotides", type: "Boolean" },
+		{ column: "hasEarlyStopCodon", type: "Boolean" }
 	]
 	if hasUmi {
 		propertiesSchema = append(propertiesSchema,
@@ -85,10 +81,9 @@ self.body(func(inputs) {
 		inferSchema: false
 	})
 
-	// Valid peptides = rows where both flag columns are "false" (string-typed
-	// because polars writes booleans as "true"/"false" into the TSV).
-	validFilter := pt.col("hasTrailingNucleotides").eq(pt.lit("false")).
-		and(pt.col("hasEarlyStopCodon").eq(pt.lit("false")))
+	// Valid peptides = rows where neither flag is set.
+	validFilter := pt.col("hasTrailingNucleotides").not().
+		and(pt.col("hasEarlyStopCodon").not())
 
 	// Per-peptide output: same schema as input, invalid rows dropped.
 	filteredPropsDf := propsDf.filter(validFilter)
