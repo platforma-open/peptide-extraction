@@ -734,7 +734,8 @@ const previewSegments = computed((): Segment[] => {
           </PlTooltip>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 4px">
+        <!-- Heterogeneity spacer — only shown when this read has a UMI. -->
+        <div v-if="r1.hasUmi" style="display: flex; align-items: center; gap: 4px">
           <PlCheckbox v-model="r1.hasHetSpacer">Has heterogeneity spacer</PlCheckbox>
           <PlTooltip class="info">
             <template #tooltip>
@@ -745,7 +746,7 @@ const previewSegments = computed((): Segment[] => {
           </PlTooltip>
         </div>
         <PlTextField
-          v-if="r1.hasHetSpacer"
+          v-if="r1.hasUmi && r1.hasHetSpacer"
           :model-value="r1.hetSpacerLength"
           label="Spacer length (value or range)"
           placeholder="e.g. 5 or 4:8"
@@ -850,14 +851,14 @@ const previewSegments = computed((): Segment[] => {
           </PlTooltip>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 4px">
+        <div v-if="r2.hasUmi" style="display: flex; align-items: center; gap: 4px">
           <PlCheckbox v-model="r2.hasHetSpacer">Has heterogeneity spacer</PlCheckbox>
           <PlTooltip class="info">
             <template #tooltip>Anonymous N-span at the start of Read 2.</template>
           </PlTooltip>
         </div>
         <PlTextField
-          v-if="r2.hasHetSpacer"
+          v-if="r2.hasUmi && r2.hasHetSpacer"
           :model-value="r2.hetSpacerLength"
           label="Spacer length (value or range)"
           placeholder="e.g. 5 or 4:8"
