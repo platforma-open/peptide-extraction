@@ -37,6 +37,10 @@ export type BlockData = {
   maxIndels?: number;
   autoR1OnlyAssembly?: boolean;
   filterInvalidPeptides?: boolean;
+  /** Mirrored from the `inputIsPairedEnd` model output by the UI so `.args()`
+   *  can validate the pattern shape against the input. `undefined` means
+   *  pairedness is not (yet) known — the cross-check is skipped in that case. */
+  inputIsPairedEnd?: boolean;
   stopCodonTypes?: StopCodonType[];
   stopCodonReplacements?: StopCodonReplacements;
   perProcessMemGB?: number;
@@ -254,6 +258,82 @@ export const platforma = BlockModelV3.create(dataModel)
           "UMI captures are optional. Peptide (R) captures can be variable (*), fixed N{n}, or ranged N{min:max}. " +
           "UMI tags are named UMI, UMI1, UMI2, etc.; peptide tags R1, R2, etc. All defined tag names must be unique.",
       );
+
+    const halves = patternParts.r2 ? [patternParts.r1, patternParts.r2] : [patternParts.r1];
+
+    // At least one half must carry the peptide insert (R-capture). Without it
+    // there is nothing to extract — mitool would yield an empty peptide table.
+    const r1HasInsert = patternParts.r1.insertName !== undefined;
+    const r2HasInsert = patternParts.r2?.insertName !== undefined;
+    if (!r1HasInsert && !r2HasInsert) {
+      throw new Error(
+        "Pattern must capture the peptide insert in at least one read. " +
+          'Enable "Has insert" on Read 1 or Read 2 in Build mode, ' +
+          "or include a (R1:…) or (R2:…) tag in your pattern.",
+      );
+    }
+
+    // Each insert capture needs a way to mark where the peptide ends —
+    // either a specific length or a 3' anchor. Without one, the pattern
+    // matches any trailing bases and the parser can't tell the peptide apart
+    // from downstream sequence.
+    for (const half of halves) {
+      if (half.insertName === undefined) continue;
+      if (half.insertLength === undefined && !half.rightAnchor) {
+        const readLabel = half.insertName === "R2" ? "Read 2" : "Read 1";
+        throw new Error(
+          `${readLabel} insert needs either a specific length or a 3' anchor to mark where the peptide ends.`,
+        );
+      }
+    }
+
+    // Presets that declare hasUmi require at least one read to carry a UMI.
+    if (preset.hasUmi === true) {
+      const r1HasUmi = patternParts.r1.umi !== undefined;
+      const r2HasUmi = patternParts.r2?.umi !== undefined;
+      if (!r1HasUmi && !r2HasUmi) {
+        throw new Error(
+          `Preset "${preset.label}" requires at least one read to carry a UMI. ` +
+            "Set a UMI length on Read 1 or Read 2, or pick a preset without UMIs.",
+        );
+      }
+    }
+
+    // Anchor characters must be DNA letters or IUPAC ambiguity codes
+    const dnaIupacRe = /^[ACGTacgtMKRYWSBDHVNmkrywsbdhvn]*$/;
+    for (const half of halves) {
+      for (const anchor of [half.leftAnchor, half.rightAnchor]) {
+        if (anchor && !dnaIupacRe.test(anchor)) {
+          throw new Error(
+            "Anchor sequences must use DNA letters or IUPAC codes only " +
+              "(A, C, G, T, M, K, R, Y, W, S, B, D, H, V, N — uppercase or lowercase).",
+          );
+        }
+      }
+    }
+
+    // Stop-codon replacement: every selected stop type must have an AA chosen,
+    // otherwise the user's selection is silently a no-op.
+    const stopTypeLabels: Record<StopCodonType, string> = {
+      amber: "Amber (TAG)",
+      ochre: "Ochre (TAA)",
+      opal: "Opal/Umber (TGA)",
+    };
+    for (const t of data.stopCodonTypes ?? []) {
+      const aa = data.stopCodonReplacements?.[t];
+      if (!aa) {
+        throw new Error(`Pick the amino acid that replaces ${stopTypeLabels[t]}.`);
+      }
+    }
+
+    // Pattern shape must match the input dataset's read structure
+    if (patternParts.r2 !== undefined && data.inputIsPairedEnd === false) {
+      throw new Error(
+        "Pattern includes a Read 2 half but the selected input is single-end. " +
+          "Remove the R2 half or pick a paired-end input.",
+      );
+    }
+
     if (data.minReadsPerConsensus !== undefined && data.minReadsPerConsensus < 1)
       throw new Error("Min reads per consensus must be at least 1");
     if (data.errorBudget !== undefined && data.errorBudget < 0)

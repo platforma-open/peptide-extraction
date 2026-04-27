@@ -5,8 +5,8 @@ import {
   AgGridTheme,
   PlAgCellStatusTag,
   PlAgOverlayLoading,
-  PlAgTextAndButtonCell,
   PlAgOverlayNoRows,
+  PlAgTextAndButtonCell,
   PlBlockPage,
   PlBtnGhost,
   PlMaskIcon24,
@@ -19,8 +19,8 @@ import type { ColDef, GridApi, GridReadyEvent } from "ag-grid-enterprise";
 import { ClientSideRowModelModule, ModuleRegistry } from "ag-grid-enterprise";
 import { AgGridVue } from "ag-grid-vue3";
 import { computed, reactive, shallowRef, watch, watchEffect } from "vue";
-import { useApp } from "../app";
 import type { SampleComposition } from "../aaComposition";
+import { useApp } from "../app";
 import AaCompositionHeatmapCell from "../components/AaCompositionHeatmapCell.vue";
 import PipelineFunnelCell from "../components/PipelineFunnelCell.vue";
 import { parseProgressString } from "../parseProgress";
@@ -39,6 +39,11 @@ watchEffect(() => {
     (p) => app.model.data.input && plRefsEqual(p.ref, app.model.data.input),
   );
   app.model.data.defaultBlockLabel = inputOption?.label ?? "";
+});
+
+// Mirror the input's pairedness from the model output into BlockData
+watchEffect(() => {
+  app.model.data.inputIsPairedEnd = app.model.outputs.inputIsPairedEnd;
 });
 
 const data = reactive<{

@@ -216,13 +216,43 @@ const patternParseError = computed(() => {
   if (!p) return null;
   const parsed = parsePattern(p);
   if (parsed === null) {
-    return "Invalid pattern. UMI tags: UMI, UMI1, UMI2… Peptide tags: R1, R2… All tag names must be unique.";
+    return (
+      "Invalid pattern. Anchor sequences must use DNA/IUPAC letters only " +
+      "(A C G T M K R Y W S B D H V N, uppercase or lowercase). " +
+      "Other valid characters: ^ * ( ) : { } > and \\ (separates Read 1 from Read 2). " +
+      "UMI tags must be named UMI, UMI1, UMI2…; peptide tags R1, R2… All tag names must be unique."
+    );
+  }
+  // The pattern must capture the peptide insert in at least one read,
+  // otherwise mitool has nothing to extract.
+  const r1HasInsert = parsed.r1.insertName !== undefined;
+  const r2HasInsert = parsed.r2?.insertName !== undefined;
+  if (!r1HasInsert && !r2HasInsert) {
+    return "Pattern must capture the peptide insert in at least one read. Include a (R1:…) or (R2:…) tag.";
+  }
+  // Each insert capture needs a way to mark where the peptide ends —
+  // a specific length or a 3' anchor.
+  const halves = parsed.r2 ? [parsed.r1, parsed.r2] : [parsed.r1];
+  for (const half of halves) {
+    if (half.insertName === undefined) continue;
+    if (half.insertLength === undefined && !half.rightAnchor) {
+      const readLabel = half.insertName === "R2" ? "Read 2" : "Read 1";
+      return `${readLabel} insert needs either a specific length or a 3' anchor to mark where the peptide ends.`;
+    }
   }
   // Cross-check the pattern shape against the selected input dataset: a
   // paired-end pattern (with an R2 half) cannot run on a single-end input
   // because there is no Read 2 file to match against.
   if (parsed.r2 !== undefined && app.model.data.input && !isPairedEnd.value) {
     return "Pattern includes a Read 2 half but the selected input is single-end. Remove the R2 half or pick a paired-end input.";
+  }
+  // UMI-bearing presets require at least one read to actually carry a UMI.
+  if (selectedPreset.value?.hasUmi === true) {
+    const r1HasUmi = parsed.r1.umi !== undefined;
+    const r2HasUmi = parsed.r2?.umi !== undefined;
+    if (!r1HasUmi && !r2HasUmi) {
+      return `Preset "${selectedPreset.value.label}" requires at least one read to carry a UMI. Set a UMI length on Read 1 or Read 2, or pick a preset without UMIs.`;
+    }
   }
   return null;
 });
@@ -260,7 +290,7 @@ function isUmiExplicitlyDisabled(f: HalfFields): boolean {
 }
 
 /** Strict: returns null when the half is not ready to be assembled. */
-function fieldsToHalf(f: HalfFields): PatternHalf | null {
+function fieldsToHalf(f: HalfFields, defaultInsertName: "R1" | "R2"): PatternHalf | null {
   const leftAnchor = f.leftAnchor?.trim() ?? "";
   const rightAnchor = f.hasInsert ? (f.rightAnchor?.trim() ?? "") : "";
   if (leftAnchor && validateAnchor(leftAnchor)) return null;
@@ -303,7 +333,7 @@ function fieldsToHalf(f: HalfFields): PatternHalf | null {
     rightAnchor,
     rightTrim: f.rightTrim,
     umiName: f.umiName,
-    insertName: f.insertName,
+    insertName: f.insertName ?? defaultInsertName,
     insertLength,
   };
 }
@@ -311,7 +341,7 @@ function fieldsToHalf(f: HalfFields): PatternHalf | null {
 /** Lenient: returns a half with whatever fields are available — used for the
  *  live preview so the assembled pattern reflects current state even when
  *  incomplete. Returns null only when there's nothing distinguishing at all. */
-function fieldsToHalfLenient(f: HalfFields): PatternHalf | null {
+function fieldsToHalfLenient(f: HalfFields, defaultInsertName: "R1" | "R2"): PatternHalf | null {
   const hasAny =
     f.hasLeadingWildcard ||
     f.hasHetSpacer ||
@@ -346,7 +376,7 @@ function fieldsToHalfLenient(f: HalfFields): PatternHalf | null {
     rightAnchor: f.rightAnchor?.trim() ?? "",
     rightTrim: f.rightTrim,
     umiName: f.umiName,
-    insertName: f.insertName,
+    insertName: f.insertName ?? defaultInsertName,
     insertLength: lenientInsert === "invalid" ? undefined : lenientInsert,
   };
 }
@@ -466,7 +496,7 @@ function clearPattern() {
 }
 
 function reassembleFromFields() {
-  const half1 = fieldsToHalfLenient(r1);
+  const half1 = fieldsToHalfLenient(r1, "R1");
   if (!half1) {
     clearPattern();
     return;
@@ -476,7 +506,7 @@ function reassembleFromFields() {
   if (!isPairedEnd.value) {
     parts = { r1: half1 };
   } else if (r2HasAnyContent.value) {
-    const half2 = fieldsToHalfLenient(r2);
+    const half2 = fieldsToHalfLenient(r2, "R2");
     parts = half2 ? { r1: half1, r2: half2 } : { r1: half1 };
   } else {
     parts = { r1: half1 };
@@ -526,7 +556,7 @@ watch(
     if (editorMode.value !== "build") return;
     if (!r2FollowsR1.value) return;
     if (!r1.rightAnchor) return; // need Read 1's 3' anchor to derive Read 2's 5' anchor
-    const half1 = fieldsToHalf(r1);
+    const half1 = fieldsToHalf(r1, "R1");
     if (!half1) return;
     setFieldsFromHalf(r2, generateR2fromR1(half1));
   },
@@ -567,7 +597,7 @@ function formatRange(r: { min: number; max: number } | undefined): string {
 }
 
 const previewSegments = computed((): Segment[] => {
-  const half1 = fieldsToHalfLenient(r1);
+  const half1 = fieldsToHalfLenient(r1, "R1");
   if (!half1) return [];
 
   const r1Prefix =
@@ -579,7 +609,7 @@ const previewSegments = computed((): Segment[] => {
 
   const half2: PatternHalf | null = isPairedEnd.value
     ? r2HasAnyContent.value
-      ? fieldsToHalfLenient(r2)
+      ? fieldsToHalfLenient(r2, "R2")
       : null
     : null;
 

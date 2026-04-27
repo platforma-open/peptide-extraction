@@ -3,6 +3,7 @@ import type {
   StopCodonReplacements,
   StopCodonType,
 } from "@platforma-open/milaboratories.peptide-extraction.model";
+import { getPreset } from "@platforma-open/milaboratories.peptide-extraction.model";
 import type { ListOption } from "@platforma-sdk/ui-vue";
 import {
   PlAccordionSection,
@@ -101,6 +102,7 @@ const autoR1OnlyAssembly = computed({
 // Consensus-related settings only apply when the pattern carries a UMI.
 // patternParts is kept in sync by PatternEditor for all pattern sources.
 const hasUmi = computed(() => {
+  if (getPreset(app.model.data.presetId)?.hasUmi === true) return true;
   const parts = app.model.data.patternParts;
   if (!parts) return false;
   return parts.r1?.umi !== undefined || parts.r2?.umi !== undefined;

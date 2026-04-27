@@ -8,8 +8,6 @@ export { parsePattern } from "@platforma-open/milaboratories.peptide-extraction.
 // ─── Assemble ─────────────────────────────────────────────────────────────────
 
 function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
-  const insertLabel = h.insertName ?? (defaultIndex === 2 ? "R2" : "R1");
-
   const prefix = h.hasLeadingWildcard ? "*" : "";
 
   // Heterogeneity spacer (anonymous N-span) comes between ^[*] and the UMI.
@@ -23,6 +21,13 @@ function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
     const umiLabel = h.umiName ?? (defaultIndex === 2 ? "UMI2" : "UMI");
     const umiRange = h.umi.min === h.umi.max ? `${h.umi.min}` : `${h.umi.min}:${h.umi.max}`;
     umiPart = `(${umiLabel}:N{${umiRange}})`;
+  }
+
+  // Insert-less half: no (R<n>:...) capture. The peptide insert lives on the
+  // other read; this half carries only UMI/anchor/spacer.
+  if (h.insertName === undefined) {
+    const trim = h.rightTrim !== undefined ? `>{${h.rightTrim}}` : "";
+    return `^${prefix}${hetSpacerPart}${umiPart}${h.leftAnchor}${trim}*`;
   }
 
   // Insert length is optional: undefined = variable (`*`), number = fixed,
@@ -48,7 +53,7 @@ function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
       : defaultTrim(anchorLen, mandatory);
   const trim = trimValue !== undefined ? `>{${trimValue}}` : "";
 
-  return `^${prefix}${hetSpacerPart}${umiPart}${h.leftAnchor}(${insertLabel}:${insertPart})${h.rightAnchor}${trim}*`;
+  return `^${prefix}${hetSpacerPart}${umiPart}${h.leftAnchor}(${h.insertName}:${insertPart})${h.rightAnchor}${trim}*`;
 }
 
 /** Assemble PatternParts back into a pattern string. Case is normalized to lowercase. */
@@ -189,7 +194,7 @@ const DNA_IUPAC_RE = /^[ACGTacgtMKRYWSBDHVNmkrywsbdhvn]*$/;
 
 export function validateAnchor(value: string): string | null {
   if (!DNA_IUPAC_RE.test(value))
-    return "Only DNA/IUPAC characters allowed (A C G T M K R Y W S B D H V N)";
+    return "Only DNA/IUPAC characters allowed (A C G T M K R Y W S B D H V N — uppercase or lowercase)";
   return null;
 }
 
