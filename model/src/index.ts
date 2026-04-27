@@ -31,7 +31,6 @@ export type BlockData = {
   presetId?: string;
   pattern?: string;
   patternParts?: PatternParts;
-  readLayout?: "single-end" | "paired-end";
   useWildcards?: boolean;
   minReadsPerConsensus?: number;
   errorBudget?: number;
@@ -78,7 +77,6 @@ const dataModel = new DataModelBuilder()
     filterInvalidPeptides: true,
     qcTableState: createPlDataTableStateV2(),
     resultsTableState: createPlDataTableStateV2(),
-    readLayout: "single-end" as const,
     useWildcards: true,
   }));
 
@@ -136,6 +134,26 @@ export const platforma = BlockModelV3.create(dataModel)
           false,
         )
       : undefined;
+  })
+
+  .output("inputIsPairedEnd", (ctx): boolean | undefined => {
+    const inputRef = ctx.data.input;
+    if (inputRef === undefined) return undefined;
+    const inputSpec = ctx.resultPool
+      .getSpecs()
+      .entries.find(
+        (obj) => obj.ref.blockId === inputRef.blockId && obj.ref.name === inputRef.name,
+      )?.obj;
+    if (inputSpec === undefined || !isPColumnSpec(inputSpec)) return undefined;
+    const axis = inputSpec.axesSpec.find((a) => a.name === "pl7.app/sequencing/readIndex");
+    const raw = axis?.domain?.["pl7.app/readIndices"];
+    if (typeof raw !== "string") return undefined;
+    try {
+      const indices = JSON.parse(raw);
+      return Array.isArray(indices) && indices.includes("R2");
+    } catch {
+      return undefined;
+    }
   })
 
   .output("sampleLabels", (ctx): Record<string, string> | undefined => {

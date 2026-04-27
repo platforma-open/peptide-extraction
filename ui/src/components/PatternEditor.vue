@@ -120,12 +120,13 @@ const editorMode = ref<EditorMode>("write");
 
 const readTab = ref<"r1" | "r2">("r1");
 
-const isPairedEnd = computed<boolean>({
-  get: () => (app.model.data.readLayout ?? "single-end") === "paired-end",
-  set: (v) => {
-    app.model.data.readLayout = v ? "paired-end" : "single-end";
-    if (!v && readTab.value === "r2") readTab.value = "r1";
-  },
+// Paired-end vs single-end is derived from the selected input dataset
+const isPairedEnd = computed<boolean>(() => app.model.outputs.inputIsPairedEnd === true);
+
+// Snap the active read-tab back to Read 1 whenever the input becomes single-end
+// while the user is parked on the Read 2 tab.
+watch(isPairedEnd, (paired) => {
+  if (!paired && readTab.value === "r2") readTab.value = "r1";
 });
 
 // ── Validation ─────────────────────────────────────────────────────────────
@@ -213,9 +214,17 @@ function validateLengthSpec(
 const patternParseError = computed(() => {
   const p = app.model.data.pattern;
   if (!p) return null;
-  return parsePattern(p) === null
-    ? "Invalid pattern. UMI tags: UMI, UMI1, UMI2… Peptide tags: R1, R2… All tag names must be unique."
-    : null;
+  const parsed = parsePattern(p);
+  if (parsed === null) {
+    return "Invalid pattern. UMI tags: UMI, UMI1, UMI2… Peptide tags: R1, R2… All tag names must be unique.";
+  }
+  // Cross-check the pattern shape against the selected input dataset: a
+  // paired-end pattern (with an R2 half) cannot run on a single-end input
+  // because there is no Read 2 file to match against.
+  if (parsed.r2 !== undefined && app.model.data.input && !isPairedEnd.value) {
+    return "Pattern includes a Read 2 half but the selected input is single-end. Remove the R2 half or pick a paired-end input.";
+  }
+  return null;
 });
 
 // ── Helpers: fields ↔ PatternHalf ──────────────────────────────────────────
@@ -437,7 +446,6 @@ watch(
 
     if (parsed.r2) {
       setFieldsFromHalf(r2, parsed.r2);
-      app.model.data.readLayout = "paired-end";
       // Detect divergence: if the parsed Read 2 half doesn't equal what the
       // mirror would produce from the parsed Read 1 half, treat Read 2 as
       // user-customised and stop auto-mirroring until it is cleared.
@@ -445,7 +453,6 @@ watch(
       r2FollowsR1.value = halfEquals(parsed.r2, expectedR2);
     } else {
       clearHalf(r2);
-      app.model.data.readLayout = "single-end";
       r2FollowsR1.value = true;
     }
   },
@@ -489,7 +496,7 @@ function reassembleFromFields() {
 
 // Fields → pattern: fires when building a user-configurable preset.
 watch(
-  [r1, r2, () => app.model.data.readLayout, () => app.model.data.useWildcards],
+  [r1, r2, isPairedEnd, () => app.model.data.useWildcards],
   () => {
     if (isUserConfigurablePreset.value && editorMode.value === "build") reassembleFromFields();
   },
@@ -693,9 +700,8 @@ const previewSegments = computed((): Segment[] => {
         >
       </div>
 
-      <!-- Read tabs + paired-end toggle share one row. The Paired-end checkbox
-           is right-aligned on the same baseline as the tab buttons and shows
-           or hides the Read 2 tab. -->
+      <!-- Read tabs. Read 2 tab appears only when the selected input dataset
+           is paired-end (derived from the input's readIndex axis). -->
       <div :class="$style.readTabs">
         <button
           :class="[$style.readTab, readTab === 'r1' && $style.readTabActive]"
@@ -710,15 +716,6 @@ const previewSegments = computed((): Segment[] => {
         >
           Read 2
         </button>
-        <div :class="$style.readTabsSpacer"></div>
-        <PlCheckbox v-model="isPairedEnd" :class="$style.readTabsCheckbox">
-          Paired-end
-          <template #tooltip>
-            Enable to show the Read 2 tab. By default Read 2 mirrors Read 1 (anchors
-            reverse-complemented, other fields copied); any Read 2 edit persists until the next Read
-            1 change.
-          </template>
-        </PlCheckbox>
       </div>
 
       <!-- Read 1 fields (always visible; gated by tab when paired-end) -->
@@ -961,15 +958,6 @@ const previewSegments = computed((): Segment[] => {
   gap: 0;
   border-bottom: 1px solid var(--pl-border, #ddd);
   margin-top: 8px;
-}
-
-.readTabsSpacer {
-  flex: 1;
-}
-
-.readTabsCheckbox {
-  padding-right: 8px;
-  padding-bottom: 4px;
 }
 
 .readTab {
