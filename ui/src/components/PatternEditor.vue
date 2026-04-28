@@ -113,8 +113,8 @@ watch(
 
 type EditorMode = "write" | "build";
 const editorModeOptions: SimpleOption<EditorMode>[] = [
-  { value: "write", text: "Define" },
-  { value: "build", text: "Build" },
+  { value: "write", text: "Pattern string" },
+  { value: "build", text: "Pattern builder" },
 ];
 const editorMode = ref<EditorMode>("write");
 

@@ -246,7 +246,7 @@ export const platforma = BlockModelV3.create(dataModel)
     const preset = getPreset(data.presetId);
     if (!preset) throw new Error("Select a preset");
     // Fixed-kit presets carry the pattern directly. User-configurable presets
-    // (e.g. generic amplicon) let the user fill in a form and the assembled
+    // (e.g. custom amplicon) let the user fill in a form and the assembled
     // pattern lives in data.pattern.
     const effectiveSourcePattern = preset.userConfigurable ? data.pattern : preset.pattern;
     if (!effectiveSourcePattern) throw new Error("Tag pattern is required");
