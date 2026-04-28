@@ -63,19 +63,19 @@ buildReplaceCodonMap := func(stopCodonTypes, stopCodonReplacements) {
 }
 
 // Translate a nucleotide-column expression to amino acids using `codonMap`.
-// Steps: uppercase, insert "|" after every 3 chars (codon delimiter), replace
-// each codon with its AA letter, strip the delimiters, drop any trailing
-// 1-2 nt that didn't fit a codon. Result includes "*" for any stops that
-// survived the user's replacements.
+// Steps: uppercase, insert "|" after every 3 chars (codon delimiter), drop any
+// trailing 1-2 nt that didn't fit a codon. 
+// Then replace each codon with its AA letter and strip the delimiters. Result
+// includes "*" for any stops that survived replacement.
 translateNtToAaPt := func(ntExpr, codonMap) {
 	seq := ntExpr.fillNull("").strToUpper()
 	seq = seq.strReplace("(.{3})", "$1|", { replaceAll: true })
+	seq = seq.strReplace("\\|[ACGT]{1,2}$", "|", { replaceAll: false })
 	for codon, aa in codonMap {
 		seq = seq.strReplace(codon + "|", aa + "|", { replaceAll: true, literal: true })
 	}
 	seq = seq.strReplace("\\|$", "", { replaceAll: false })
 	seq = seq.strReplace("|", "", { replaceAll: true, literal: true })
-	seq = seq.strReplace("[ACGT]{1,2}$", "", { replaceAll: true })
 	return seq
 }
 
