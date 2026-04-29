@@ -174,6 +174,21 @@ const hasUmi = computed(() => {
 
     <div style="display: flex; align-items: center; gap: 4px">
       <PlCheckbox
+        :model-value="app.model.data.unstranded ?? false"
+        @update:model-value="(v) => (app.model.data.unstranded = v)"
+      >
+        Unstranded library
+      </PlCheckbox>
+      <PlTooltip class="info">
+        <template #tooltip>
+          Enable for libraries where reads can come in either orientation.<br /><br />
+          Leave off for stranded preps where R1 always reads the forward strand.
+        </template>
+      </PlTooltip>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 4px">
+      <PlCheckbox
         :model-value="app.model.data.filterInvalidPeptides ?? true"
         @update:model-value="(v) => (app.model.data.filterInvalidPeptides = v)"
       >

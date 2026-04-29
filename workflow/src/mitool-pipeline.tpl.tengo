@@ -42,6 +42,7 @@ self.body(func(inputs) {
 	collapseMemGB := inputs.collapseMemGB
 	collapseCPUs := inputs.collapseCPUs
 	fileExtension := inputs.fileExtension
+	unstranded := inputs.unstranded
 
 	parts := inputs.patternParts
 
@@ -139,7 +140,8 @@ self.body(func(inputs) {
 		mitoolCPUs: mitoolCPUs,
 		mitoolMemGB: mitoolMemGB,
 		inputArg: inputArg,
-		inputFiles: inputFilesBuilder.build()
+		inputFiles: inputFilesBuilder.build(),
+		unstranded: unstranded
 	})
 
 	parsedMic := parseRun.output("parsedMic")

@@ -32,6 +32,7 @@ export type BlockData = {
   pattern?: string;
   patternParts?: PatternParts;
   useWildcards?: boolean;
+  unstranded?: boolean;
   minReadsPerConsensus?: number;
   errorBudget?: number;
   maxIndels?: number;
@@ -353,6 +354,7 @@ export const platforma = BlockModelV3.create(dataModel)
         : effectiveSourcePattern,
       patternParts,
       useWildcards: useWildcards,
+      unstranded: data.unstranded ?? false,
       minReadsPerConsensus: data.minReadsPerConsensus,
       errorBudget: data.errorBudget,
       maxIndels: data.maxIndels,
