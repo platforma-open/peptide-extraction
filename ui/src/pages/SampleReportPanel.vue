@@ -2,7 +2,8 @@
 import type { AnyLogHandle } from "@platforma-sdk/model";
 import type { SimpleOption } from "@platforma-sdk/ui-vue";
 import { PlBtnGroup, PlLogView } from "@platforma-sdk/ui-vue";
-import { computed, ref } from "vue";
+import { getPreset } from "@platforma-open/milaboratories.peptide-profiling.model";
+import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
 import { sampleResults } from "../results";
 import AaCompositionChart from "../components/AaCompositionChart.vue";
@@ -24,14 +25,32 @@ const tabOptions: SimpleOption<TabId>[] = [
 ];
 const currentTab = ref<TabId>("visualReport");
 
+// Refine and consensus only run when the pattern carries a UMI; otherwise
+// those step logs are always empty, so we hide them from the step selector.
+const hasUmi = computed(() => {
+  if (getPreset(app.model.data.presetId)?.hasUmi === true) return true;
+  const parts = app.model.data.patternParts;
+  if (!parts) return false;
+  return parts.r1?.umi !== undefined || parts.r2?.umi !== undefined;
+});
+
 // Log step selector (under Logs tab)
 type StepId = "1-parse" | "2-refine" | "4-consensus";
-const stepOptions: SimpleOption<StepId>[] = [
-  { value: "1-parse", text: "Parse" },
-  { value: "2-refine", text: "Refine" },
-  { value: "4-consensus", text: "Consensus" },
-];
+const stepOptions = computed<SimpleOption<StepId>[]>(() => {
+  const opts: SimpleOption<StepId>[] = [{ value: "1-parse", text: "Parse" }];
+  if (hasUmi.value) {
+    opts.push({ value: "2-refine", text: "Refine" });
+    opts.push({ value: "4-consensus", text: "Consensus" });
+  }
+  return opts;
+});
 const currentStep = ref<StepId>("1-parse");
+
+// If the user had refine/consensus selected and then switched to a no-UMI
+// pattern, reset back to parse so the selector doesn't point at a hidden step.
+watch(hasUmi, (umi) => {
+  if (!umi && currentStep.value !== "1-parse") currentStep.value = "1-parse";
+});
 
 const logHandle = computed((): AnyLogHandle | undefined => {
   const logs = app.model.outputs.stepLogs;
@@ -68,7 +87,7 @@ const currentSample = computed(() => {
   </template>
 
   <template v-if="currentTab === 'logs'">
-    <PlBtnGroup v-model="currentStep" :options="stepOptions" />
+    <PlBtnGroup v-if="hasUmi" v-model="currentStep" :options="stepOptions" />
     <PlLogView v-if="logHandle" :log-handle="logHandle" />
     <div v-else>No log available</div>
   </template>
