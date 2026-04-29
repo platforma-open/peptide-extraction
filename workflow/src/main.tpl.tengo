@@ -46,7 +46,7 @@ wf.body(func(args) {
 		traceLabel = args.defaultBlockLabel
 	}
 	if traceLabel == "" {
-		traceLabel = "Peptide Extraction"
+		traceLabel = "Peptide Profiling"
 	}
 
 	inputSpec := args.resolvedInput.spec
@@ -254,7 +254,7 @@ wf.body(func(args) {
 
 			// will be automatically propagated to all output specs
 			traceSteps: [{
-				type: "milaboratories.peptide-extraction",
+				type: "milaboratories.peptide-profiling",
 				id: blockId,
 				importance: 20,
 				label: traceLabel
@@ -332,7 +332,7 @@ wf.body(func(args) {
 				aggMinCPUs: defaultAggMinCPUs
 			},
 			traceSteps: [{
-				type: "milaboratories.peptide-extraction.aggregate",
+				type: "milaboratories.peptide-profiling.aggregate",
 				id: blockId,
 				importance: 60,
 				label: traceLabel

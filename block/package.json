@@ -1,5 +1,5 @@
 {
-  "name": "@platforma-open/milaboratories.peptide-extraction",
+  "name": "@platforma-open/milaboratories.peptide-profiling",
   "version": "1.0.0",
   "files": [
     "index.d.ts",
@@ -12,9 +12,9 @@
     "do-pack": "shx rm -f *.tgz && block-tools pack && pnpm pack && shx mv *.tgz package.tgz"
   },
   "dependencies": {
-    "@platforma-open/milaboratories.peptide-extraction.model": "workspace:*",
-    "@platforma-open/milaboratories.peptide-extraction.ui": "workspace:*",
-    "@platforma-open/milaboratories.peptide-extraction.workflow": "workspace:*",
+    "@platforma-open/milaboratories.peptide-profiling.model": "workspace:*",
+    "@platforma-open/milaboratories.peptide-profiling.ui": "workspace:*",
+    "@platforma-open/milaboratories.peptide-profiling.workflow": "workspace:*",
     "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {
@@ -23,16 +23,16 @@
   "packageManager": "pnpm@9.12.0",
   "block": {
     "components": {
-      "workflow": "@platforma-open/milaboratories.peptide-extraction.workflow/dist/tengo/tpl/main.plj.gz",
-      "model": "@platforma-open/milaboratories.peptide-extraction.model/dist/model.json",
-      "ui": "@platforma-open/milaboratories.peptide-extraction.ui/dist"
+      "workflow": "@platforma-open/milaboratories.peptide-profiling.workflow/dist/tengo/tpl/main.plj.gz",
+      "model": "@platforma-open/milaboratories.peptide-profiling.model/dist/model.json",
+      "ui": "@platforma-open/milaboratories.peptide-profiling.ui/dist"
     },
     "meta": {
-      "title": "Peptide Extraction",
+      "title": "Peptide Profiling",
       "logo": "file:../logos/block-logo.png",
       "url": "https://github.com/platforma-open/milaboratories.peptide-extraction",
       "support": "mailto:support@milaboratories.com",
-      "description": "Peptide Extraction block that can be used to extract peptides sequences from Fastq files.",
+      "description": "Peptide Profiling block that can be used to extract peptides sequences from Fastq files.",
       "longDescription": "file:../docs/description.md",
       "changelog": "file:../CHANGELOG.md",
       "tags": [

@@ -87,13 +87,13 @@ importers:
 
   block:
     dependencies:
-      '@platforma-open/milaboratories.peptide-extraction.model':
+      '@platforma-open/milaboratories.peptide-profiling.model':
         specifier: workspace:*
         version: link:../model
-      '@platforma-open/milaboratories.peptide-extraction.ui':
+      '@platforma-open/milaboratories.peptide-profiling.ui':
         specifier: workspace:*
         version: link:../ui
-      '@platforma-open/milaboratories.peptide-extraction.workflow':
+      '@platforma-open/milaboratories.peptide-profiling.workflow':
         specifier: workspace:*
         version: link:../workflow
       '@platforma-sdk/model':
@@ -141,7 +141,7 @@ importers:
   test:
     dependencies:
       this-block:
-        specifier: workspace:@platforma-open/milaboratories.peptide-extraction@*
+        specifier: workspace:@platforma-open/milaboratories.peptide-profiling@*
         version: link:../block
       typescript:
         specifier: '*'
@@ -156,7 +156,7 @@ importers:
 
   ui:
     dependencies:
-      '@platforma-open/milaboratories.peptide-extraction.model':
+      '@platforma-open/milaboratories.peptide-profiling.model':
         specifier: workspace:*
         version: link:../model
       '@platforma-sdk/model':
@@ -193,7 +193,7 @@ importers:
 
   workflow:
     dependencies:
-      '@platforma-open/milaboratories.peptide-extraction.software':
+      '@platforma-open/milaboratories.peptide-profiling.software':
         specifier: workspace:*
         version: link:../software
       '@platforma-open/milaboratories.software-mitool':

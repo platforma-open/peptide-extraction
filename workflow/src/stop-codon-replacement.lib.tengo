@@ -1,6 +1,6 @@
 // Stop-codon replacement helpers for pt-native nucleotide → amino acid
 // translation. Adapted from mixcr-clonotyping's stop-codon-replacement.lib.tengo
-// for the simpler peptide-extraction case (one NT column per row).
+// for the simpler peptide-profiling case (one NT column per row).
 
 pt := import("@platforma-sdk/workflow-tengo:pt")
 text := import("text")

@@ -1,10 +1,10 @@
 ---
-"@platforma-open/milaboratories.peptide-extraction": patch
-"@platforma-open/milaboratories.peptide-extraction.model": patch
-"@platforma-open/milaboratories.peptide-extraction.software": patch
-"@platforma-open/milaboratories.peptide-extraction.test": patch
-"@platforma-open/milaboratories.peptide-extraction.ui": patch
-"@platforma-open/milaboratories.peptide-extraction.workflow": patch
+"@platforma-open/milaboratories.peptide-profiling": patch
+"@platforma-open/milaboratories.peptide-profiling.model": patch
+"@platforma-open/milaboratories.peptide-profiling.software": patch
+"@platforma-open/milaboratories.peptide-profiling.test": patch
+"@platforma-open/milaboratories.peptide-profiling.ui": patch
+"@platforma-open/milaboratories.peptide-profiling.workflow": patch
 ---
 
 First Changeset

@@ -1,5 +1,5 @@
 {
-  "name": "@platforma-open/milaboratories.peptide-extraction.test",
+  "name": "@platforma-open/milaboratories.peptide-profiling.test",
   "version": "1.0.0",
   "private": true,
   "description": "Block tests",
@@ -10,7 +10,7 @@
     "test": "vitest --passWithNoTests"
   },
   "dependencies": {
-    "this-block": "workspace:@platforma-open/milaboratories.peptide-extraction@*"
+    "this-block": "workspace:@platforma-open/milaboratories.peptide-profiling@*"
   },
   "devDependencies": {
     "@platforma-sdk/test": "catalog:"

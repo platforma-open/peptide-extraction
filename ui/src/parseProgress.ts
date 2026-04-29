@@ -1,4 +1,4 @@
-import { ProgressPattern } from "@platforma-open/milaboratories.peptide-extraction.model";
+import { ProgressPattern } from "@platforma-open/milaboratories.peptide-profiling.model";
 
 type ParsedProgress = {
   raw?: string;

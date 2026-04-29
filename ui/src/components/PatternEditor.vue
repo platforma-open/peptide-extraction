@@ -2,8 +2,8 @@
 import type {
   PatternHalf,
   PatternParts,
-} from "@platforma-open/milaboratories.peptide-extraction.model";
-import { allPresets, getPreset } from "@platforma-open/milaboratories.peptide-extraction.model";
+} from "@platforma-open/milaboratories.peptide-profiling.model";
+import { allPresets, getPreset } from "@platforma-open/milaboratories.peptide-profiling.model";
 import type { ListOption, SimpleOption } from "@platforma-sdk/ui-vue";
 import { PlBtnGroup, PlCheckbox, PlDropdown, PlTextField, PlTooltip } from "@platforma-sdk/ui-vue";
 import { computed, reactive, ref, watch } from "vue";

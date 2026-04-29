@@ -1,5 +1,5 @@
 {
-  "name": "@platforma-open/milaboratories.peptide-extraction.workflow",
+  "name": "@platforma-open/milaboratories.peptide-profiling.workflow",
   "version": "1.0.0",
   "description": "Block Workflow",
   "type": "module",
@@ -9,7 +9,7 @@
     "format": "/usr/bin/env emacs --script ./format.el"
   },
   "dependencies": {
-    "@platforma-open/milaboratories.peptide-extraction.software": "workspace:*",
+    "@platforma-open/milaboratories.peptide-profiling.software": "workspace:*",
     "@platforma-open/milaboratories.software-mitool": "catalog:",
     "@platforma-sdk/workflow-tengo": "catalog:"
   },

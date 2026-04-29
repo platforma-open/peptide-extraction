@@ -23,7 +23,7 @@ self.defineOutputs(
 )
 
 mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
-qcChecksSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:qc-checks")
+qcChecksSw := assets.importSoftware("@platforma-open/milaboratories.peptide-profiling.software:qc-checks")
 
 umiConsensusTpl := assets.importTemplate(":umi-consensus")
 

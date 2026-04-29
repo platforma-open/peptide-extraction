@@ -1,4 +1,4 @@
-import { platforma } from "@platforma-open/milaboratories.peptide-extraction.model";
+import { platforma } from "@platforma-open/milaboratories.peptide-profiling.model";
 import { defineAppV3 } from "@platforma-sdk/ui-vue";
 import MainPage from "./pages/MainPage.vue";
 import QcReportTablePage from "./pages/QcReportTablePage.vue";

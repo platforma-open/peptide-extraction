@@ -367,7 +367,7 @@ export const platforma = BlockModelV3.create(dataModel)
     };
   })
 
-  .title(() => "Peptide Extraction")
+  .title(() => "Peptide Profiling")
 
   .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
 

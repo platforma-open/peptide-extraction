@@ -196,7 +196,7 @@ const gridOptions = {
 </script>
 
 <template>
-  <PlBlockPage title="Peptide Extraction">
+  <PlBlockPage title="Peptide Profiling">
     <template #append>
       <PlBtnGhost @click.stop="() => (data.activePanel = 'settings')">
         Settings

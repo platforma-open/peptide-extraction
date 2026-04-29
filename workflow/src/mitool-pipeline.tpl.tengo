@@ -23,7 +23,7 @@ self.defineOutputs(
 	"parseLogStream"
 )
 
-parseGateSw := assets.importSoftware("@platforma-open/milaboratories.peptide-extraction.software:parse-gate")
+parseGateSw := assets.importSoftware("@platforma-open/milaboratories.peptide-profiling.software:parse-gate")
 
 parseTpl := assets.importTemplate(":parse")
 downstreamTpl := assets.importTemplate(":downstream-pipeline")

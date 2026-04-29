@@ -2,8 +2,8 @@ import type {
   PatternHalf,
   PatternParts,
   LengthRange,
-} from "@platforma-open/milaboratories.peptide-extraction.model";
-export { parsePattern } from "@platforma-open/milaboratories.peptide-extraction.model";
+} from "@platforma-open/milaboratories.peptide-profiling.model";
+export { parsePattern } from "@platforma-open/milaboratories.peptide-profiling.model";
 
 // ─── Assemble ─────────────────────────────────────────────────────────────────
 

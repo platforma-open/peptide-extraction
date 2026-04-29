@@ -1,1 +1,1 @@
-# peptide-extraction
+# peptide-profiling

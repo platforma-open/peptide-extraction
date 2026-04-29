@@ -1,5 +1,5 @@
 {
-  "name": "@platforma-open/milaboratories.peptide-extraction.model",
+  "name": "@platforma-open/milaboratories.peptide-profiling.model",
   "version": "1.0.0",
   "description": "Block model",
   "type": "module",

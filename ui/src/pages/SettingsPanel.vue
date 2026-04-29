@@ -2,8 +2,8 @@
 import type {
   StopCodonReplacements,
   StopCodonType,
-} from "@platforma-open/milaboratories.peptide-extraction.model";
-import { getPreset } from "@platforma-open/milaboratories.peptide-extraction.model";
+} from "@platforma-open/milaboratories.peptide-profiling.model";
+import { getPreset } from "@platforma-open/milaboratories.peptide-profiling.model";
 import type { ListOption } from "@platforma-sdk/ui-vue";
 import {
   PlAccordionSection,

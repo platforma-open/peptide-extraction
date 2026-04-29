@@ -1,4 +1,4 @@
-import { ProgressPrefix } from "@platforma-open/milaboratories.peptide-extraction.model";
+import { ProgressPrefix } from "@platforma-open/milaboratories.peptide-profiling.model";
 import { ReactiveFileContent } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import type { SampleComposition } from "./aaComposition";
