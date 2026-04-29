@@ -63,6 +63,7 @@ self.body(func(inputs) {
 	// Abundance-weighted invalid-peptide check rows; concatenated into qc-checks.ndjson below.
 	// TODO: calibrate thresholds (5% / 15%)
 	propertyCheckFrames := []
+	seqFrames := []
 	for sKey in maps.getKeys(peptideTablesMap) {
 		sampleFile := peptideTablesMap[sKey]
 		key := json.decode(sKey)
@@ -225,6 +226,16 @@ self.body(func(inputs) {
 		}
 		compRow := compRaw.select(pctExprs...)
 		compFrames = append(compFrames, compRow)
+
+		// Per-sample sequence list for seq-logo rendering (UI-side alignment).
+		// No filter here: joined always has rows (left join from sampleDf).
+		// UI parser skips null/empty aaSeqPeptide entries.
+		seqSelectExprs := [
+			pt.lit(sampleId).alias("sampleId"),
+			pt.col("aaSeqPeptide")
+		]
+		seqDf := joined.select(seqSelectExprs...)
+		seqFrames = append(seqFrames, seqDf)
 	}
 
 	allQc := undefined
@@ -282,9 +293,17 @@ self.body(func(inputs) {
 		funnelFrames = append(funnelFrames, funnelDf)
 	}
 
+	allSeq := undefined
+	if len(seqFrames) == 1 {
+		allSeq = seqFrames[0]
+	} else {
+		allSeq = pt.concat(seqFrames)
+	}
+
 	// Sort all outputs by sampleId for deterministic file content (stable CIDs across re-runs)
 	allQc.sort(["sampleId"]).save("qc.tsv")
 	allComp.sort(["sampleId"]).save("aa-composition.ndjson")
+	allSeq.sort(["sampleId"]).save("aa-sequences.ndjson")
 
 	allCheckFrames := qcChecksFrames + propertyCheckFrames
 	if len(allCheckFrames) > 0 {
@@ -345,6 +364,7 @@ self.body(func(inputs) {
 	return {
 		qcTable: result.getFile("qc.tsv"),
 		aaComposition: result.getFile("aa-composition.ndjson"),
+		aaSequences: result.getFile("aa-sequences.ndjson"),
 		qcChecks: result.getFile("qc-checks.ndjson"),
 		pipelineFunnel: result.getFile("pipeline-funnel.ndjson"),
 		distributions: result.getFile("distributions.ndjson")

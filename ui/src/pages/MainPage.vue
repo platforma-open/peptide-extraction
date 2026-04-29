@@ -23,6 +23,7 @@ import type { SampleComposition } from "../aaComposition";
 import { useApp } from "../app";
 import AaCompositionHeatmapCell from "../components/AaCompositionHeatmapCell.vue";
 import PipelineFunnelCell from "../components/PipelineFunnelCell.vue";
+import SeqLogoCell from "../components/SeqLogoCell.vue";
 import { parseProgressString } from "../parseProgress";
 import type { FunnelEntry } from "../pipelineFunnel";
 import type { QcStatus } from "../qcChecks";
@@ -182,6 +183,19 @@ const columnDefs: ColDef<SampleResult>[] = [
     cellRendererSelector: (cellData) => ({
       component: AaCompositionHeatmapCell,
       params: { value: cellData.data?.aaComposition },
+    }),
+  }),
+  createAgGridColDef<SampleResult, string[] | undefined>({
+    colId: "seqLogo",
+    headerName: "Seq Logo",
+    headerComponentParams: { type: "Text" } satisfies PlAgHeaderComponentParams,
+    flex: 2,
+    cellStyle: {
+      "--ag-cell-horizontal-padding": "4px",
+    },
+    cellRendererSelector: (cellData) => ({
+      component: SeqLogoCell,
+      params: { value: cellData.data?.sequences },
     }),
   }),
 ];
