@@ -20,7 +20,6 @@ let abortController: AbortController | undefined;
 
 const resizeObserver = new ResizeObserver((entries) => {
   const width = entries[0]?.contentRect.width ?? 0;
-  console.log("[SeqLogoCell] containerWidth:", width);
   if (width > 0) containerWidth.value = width;
 });
 

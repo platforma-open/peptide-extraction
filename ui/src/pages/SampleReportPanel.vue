@@ -6,6 +6,7 @@ import { computed, ref } from "vue";
 import { useApp } from "../app";
 import { sampleResults } from "../results";
 import AaCompositionChart from "../components/AaCompositionChart.vue";
+import SeqLogoChart from "../components/SeqLogoChart.vue";
 import DistributionChart from "../components/DistributionChart.vue";
 import PipelineFunnelChart from "../components/PipelineFunnelChart.vue";
 import QcSection from "../components/QcSection.vue";
@@ -51,6 +52,7 @@ const currentSample = computed(() => {
 
   <template v-if="currentTab === 'visualReport'">
     <PipelineFunnelChart :funnel="currentSample?.pipelineFunnel" />
+    <SeqLogoChart :sequences="currentSample?.sequences" />
     <AaCompositionChart :composition="currentSample?.aaComposition" />
   </template>
 

@@ -234,7 +234,7 @@ self.body(func(inputs) {
 			pt.lit(sampleId).alias("sampleId"),
 			pt.col("aaSeqPeptide")
 		]
-		seqDf := joined.select(seqSelectExprs...)
+		seqDf := joined.select(seqSelectExprs...).limit(50000)
 		seqFrames = append(seqFrames, seqDf)
 	}
 

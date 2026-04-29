@@ -13,7 +13,8 @@ export function parseSeqListsNdjson(content: string): Map<string, string[]> {
         list = [];
         map.set(sampleId, list);
       }
-      if (list.length < 1000) {
+      // TODO: discuss the limits, example with 20000 requires ~5s for every sample
+      if (list.length < 3000) {
         list.push(aaSeqPeptide);
       }
     } catch {
