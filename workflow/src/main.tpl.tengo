@@ -52,6 +52,9 @@ wf.body(func(args) {
 	inputSpec := args.resolvedInput.spec
 	inputData := args.resolvedInput.data
 
+	// "fastq" or "fastq.gz"
+	fileExtension := inputSpec.domain["pl7.app/fileExtension"]
+
 	variantKeyAxis := columnSpecs.variantKeyAxisSpec(blockId)
 
 	// Detect UMI presence from the parsed pattern. Drives which abundance
@@ -266,7 +269,8 @@ wf.body(func(args) {
 				maxIndels: args.maxIndels,
 				minReadsPerConsensus: args.minReadsPerConsensus,
 				autoR1OnlyAssembly: args.autoR1OnlyAssembly,
-				patternParts: args.patternParts
+				patternParts: args.patternParts,
+				fileExtension: fileExtension
 			},
 
 			// by passing those parameters as meta fields we allow for recovery and deduplication mechanisms

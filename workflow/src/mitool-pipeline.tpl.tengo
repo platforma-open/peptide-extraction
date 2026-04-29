@@ -41,6 +41,7 @@ self.body(func(inputs) {
 	mitoolCPUs := inputs.mitoolCPUs
 	collapseMemGB := inputs.collapseMemGB
 	collapseCPUs := inputs.collapseCPUs
+	fileExtension := inputs.fileExtension
 
 	parts := inputs.patternParts
 
@@ -59,7 +60,7 @@ self.body(func(inputs) {
 		ll.assert(aggregationAxesNames == [], "unexpected aggregation axes names")
 		inputFile := inputMap["[]"]
 		ll.assert(!is_undefined(inputFile), "unexpected input structure")
-		R1Files = append(R1Files, { name: "input.fastq.gz", file: inputFile })
+		R1Files = append(R1Files, { name: "input." + fileExtension, file: inputFile })
 	} else if inputDataMeta.keyLength == 1 {
 		ll.assert(
 			aggregationAxesNames == ["pl7.app/sequencing/readIndex"],
@@ -70,9 +71,9 @@ self.body(func(inputs) {
 			key := json.decode(sKey)
 			r := key[0]
 			if r == "R1" {
-				R1Files = append(R1Files, { name: "input_R1.fastq.gz", file: inputFile })
+				R1Files = append(R1Files, { name: "input_R1." + fileExtension, file: inputFile })
 			} else if r == "R2" {
-				R2Files = append(R2Files, { name: "input_R2.fastq.gz", file: inputFile })
+				R2Files = append(R2Files, { name: "input_R2." + fileExtension, file: inputFile })
 			}
 		}
 	} else if inputDataMeta.keyLength == 2 {
@@ -86,9 +87,9 @@ self.body(func(inputs) {
 			lane := key[0]
 			r := key[1]
 			if r == "R1" {
-				R1Files = append(R1Files, { name: "input_L" + lane + "_R1.fastq.gz", file: inputFile })
+				R1Files = append(R1Files, { name: "input_L" + lane + "_R1." + fileExtension, file: inputFile })
 			} else if r == "R2" {
-				R2Files = append(R2Files, { name: "input_L" + lane + "_R2.fastq.gz", file: inputFile })
+				R2Files = append(R2Files, { name: "input_L" + lane + "_R2." + fileExtension, file: inputFile })
 			}
 		}
 	} else {
@@ -109,18 +110,18 @@ self.body(func(inputs) {
 	// Determine input arg pattern for mitool parse
 	inputArg := ""
 	if inputDataMeta.keyLength == 0 {
-		inputArg = "input.fastq.gz"
+		inputArg = "input." + fileExtension
 	} else if inputDataMeta.keyLength == 1 {
 		if isPairedEnd {
-			inputArg = "input_{{R}}.fastq.gz"
+			inputArg = "input_{{R}}." + fileExtension
 		} else {
-			inputArg = "input_R1.fastq.gz"
+			inputArg = "input_R1." + fileExtension
 		}
 	} else {
 		if isPairedEnd {
-			inputArg = "input_L{{n}}_{{R}}.fastq.gz"
+			inputArg = "input_L{{n}}_{{R}}." + fileExtension
 		} else {
-			inputArg = "input_L{{n}}_R1.fastq.gz"
+			inputArg = "input_L{{n}}_R1." + fileExtension
 		}
 	}
 

@@ -30,7 +30,7 @@
     "meta": {
       "title": "Peptide Profiling",
       "logo": "file:../logos/block-logo.png",
-      "url": "https://github.com/platforma-open/milaboratories.peptide-extraction",
+      "url": "https://github.com/platforma-open/peptide-extraction",
       "support": "mailto:support@milaboratories.com",
       "description": "Peptide Profiling block that can be used to extract peptides sequences from Fastq files.",
       "longDescription": "file:../docs/description.md",
