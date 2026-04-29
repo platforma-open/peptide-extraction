@@ -64,15 +64,21 @@ watch(
       :width="containerWidth"
       :height="32"
     />
+    <div v-else-if="!params.value?.length" class="seq-logo-not-ready">Not ready</div>
   </div>
 </template>
 
-<style scoped>
+<style>
 .seq-logo-cell {
   height: 100%;
   width: 100%;
   overflow: hidden;
   display: flex;
   align-items: center;
+}
+
+.seq-logo-not-ready {
+  color: var(--color-txt-03);
+  font-size: 12px;
 }
 </style>
