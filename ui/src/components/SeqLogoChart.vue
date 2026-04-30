@@ -71,14 +71,15 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 24px;
+  padding: 12px 0;
   max-width: 720px;
 }
 
 .chart-title {
-  font-weight: 600;
-  font-size: 16px;
   color: var(--color-txt-01);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 24px;
 }
 
 .logo-area {
