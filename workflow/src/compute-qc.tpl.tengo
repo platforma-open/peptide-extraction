@@ -64,6 +64,7 @@ self.body(func(inputs) {
 	// TODO: calibrate thresholds (5% / 15%)
 	propertyCheckFrames := []
 	seqFrames := []
+	pepLenFrames := []
 	for sKey in maps.getKeys(peptideTablesMap) {
 		sampleFile := peptideTablesMap[sKey]
 		key := json.decode(sKey)
@@ -236,6 +237,35 @@ self.body(func(inputs) {
 		]
 		seqDf := joined.select(seqSelectExprs...).limit(3000)
 		seqFrames = append(seqFrames, seqDf)
+
+		// Per-sample peptide length distributions (AA and NT).
+		// Filter to rows with a valid peptide, then group by length and count.
+		validPeptides := joined.filter(pt.col("aaLengthPeptide").gt(0))
+
+		for lenCol in ["aaLengthPeptide", "ntLengthPeptide"] {
+			distName := "aa_length"
+			if lenCol == "ntLengthPeptide" {
+				distName = "nt_length"
+			}
+			lenDf := validPeptides.groupBy(lenCol).agg(
+				pt.col(lenCol).count().alias("count")
+			).withColumns(
+				pt.col(lenCol).cast("String").alias("bin"),
+				pt.lit(sampleId).alias("sampleId"),
+				pt.lit(distName).alias("dist"),
+				pt.col("count").cast("Long").alias("count"),
+				pt.col("count").cast("Double").truediv(
+					pt.col("count").cast("Double").sum()
+				).multiply(pt.lit(100.0)).alias("pct")
+			).select(
+				pt.col("dist"),
+				pt.col("bin"),
+				pt.col("count"),
+				pt.col("pct"),
+				pt.col("sampleId")
+			)
+			pepLenFrames = append(pepLenFrames, lenDf)
+		}
 	}
 
 	allQc := undefined
@@ -349,12 +379,13 @@ self.body(func(inputs) {
 		distFrames = append(distFrames, distDf)
 	}
 
-	if len(distFrames) > 0 {
+	allDistFrames := distFrames + pepLenFrames
+	if len(allDistFrames) > 0 {
 		allDist := undefined
-		if len(distFrames) == 1 {
-			allDist = distFrames[0]
+		if len(allDistFrames) == 1 {
+			allDist = allDistFrames[0]
 		} else {
-			allDist = pt.concat(distFrames)
+			allDist = pt.concat(allDistFrames)
 		}
 		allDist.sort(["sampleId", "dist"]).save("distributions.ndjson")
 	}
