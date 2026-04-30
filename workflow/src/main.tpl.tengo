@@ -13,8 +13,6 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
 pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 file := import("@platforma-sdk/workflow-tengo:file")
 
-times := import("times")
-
 mitoolPipelineTpl := assets.importTemplate(":mitool-pipeline")
 aggregatePeptidesTpl := assets.importTemplate(":aggregate-peptides")
 computeQcTpl := assets.importTemplate(":compute-qc")
