@@ -4,14 +4,13 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
     branches:
-      - "main"
+      - 'main'
   push:
     branches:
-      - "main"
+      - 'main'
   workflow_dispatch: {}
 jobs:
   init:
-    if: github.repository != 'milaboratory/platforma-peptide-extraction'
     runs-on: ubuntu-latest
     steps:
       - uses: milaboratory/github-ci/actions/context/init@v4
@@ -19,47 +18,39 @@ jobs:
           version-canonize: false
           branch-versioning: main
   run:
-    if: github.repository != 'milaboratory/platforma-peptide-extraction'
     needs:
       - init
-
     uses: milaboratory/github-ci/.github/workflows/node-simple-pnpm.yaml@v4
     with:
-      app-name: "Block: peptide-extraction"
-      app-name-slug: "block-peptide-extraction"
+      app-name: 'Block: Peptide Extraction'
+      app-name-slug: 'block-peptide-extraction'
 
-      node-version: "20.x"
-      build-script-name: "build"
+      node-version: '20.x'
+      build-script-name: 'build'
       pnpm-recursive-build: false
 
       test: false
-      test-script-name: "test"
+      test-script-name: 'test'
       pnpm-recursive-tests: false
-      team-id: "ciplopen"
+      team-id: 'ciplopen-peptide-extraction'
 
-      package-path: "block"
-      publish-to-public: true
-      create-tag: true
+      publish-to-public: 'true'
+      package-path: 'block'
+      create-tag: 'true'
 
       npmrc-config: |
         {
           "registries": {
             "https://registry.npmjs.org/": {
-              "scopes": ["milaboratories", "platforma-open", "platforma-sdk"],
+              "scopes": ["milaboratories", "platforma-sdk", "platforma-open"],
               "tokenVar": "NPMJS_TOKEN"
-            },
-            "https://npm.pkg.github.com/": {
-              "scopes": ["milaboratory"],
-              "tokenVar": "NODE_AUTH_TOKEN"
             }
           }
         }
-
     secrets:
       env: |
         { "PL_LICENSE": ${{ toJSON(secrets.MI_LICENSE) }},
           "MI_LICENSE": ${{ toJSON(secrets.MI_LICENSE) }},
-
           "NPMJS_TOKEN": ${{ toJSON(secrets.NPMJS_TOKEN) }},
           "PL_CI_TEST_USER": ${{ toJSON(secrets.PL_CI_TEST_USER) }},
           "PL_CI_TEST_PASSWORD": ${{ toJSON(secrets.PL_CI_TEST_PASSWORD) }},
