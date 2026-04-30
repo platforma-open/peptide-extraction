@@ -10,6 +10,7 @@ xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
+pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 file := import("@platforma-sdk/workflow-tengo:file")
 
 times := import("times")
@@ -255,13 +256,8 @@ wf.body(func(args) {
 			// failed or whole execution was interrupted
 			//stepCache: 30 * times.minute,
 
-			// will be automatically propagated to all output specs
-			traceSteps: [{
-				type: "milaboratories.peptide-profiling",
-				id: blockId,
-				importance: 20,
-				label: traceLabel
-			}],
+			// Trace is no longer added here — applied uniformly to the
+			// exported pframe below so both filtered/unfiltered paths agree.
 
 			extra: {
 				pattern: args.effectivePattern,
@@ -335,13 +331,9 @@ wf.body(func(args) {
 			metaExtra: {
 				aggMinMemGB: defaultAggMinMemGB,
 				aggMinCPUs: defaultAggMinCPUs
-			},
-			traceSteps: [{
-				type: "milaboratories.peptide-profiling.aggregate",
-				id: blockId,
-				importance: 60,
-				label: traceLabel
-			}]
+			}
+			// Trace is no longer added here — applied uniformly to the
+			// exported pframe below so both filtered/unfiltered paths agree.
 		}
 	)
 
@@ -393,6 +385,13 @@ wf.body(func(args) {
 	// filter-peptides.tpl.tengo. The filter template is a sibling consumer of propertiesFile
 	// (runs in parallel with compute-qc), so compute-qc still sees unfiltered data and
 	// "Peptides Dropped" counts in the QC table stay accurate.
+	trace := pSpec.makeTrace(inputSpec, {
+		type: "milaboratories.peptide-profiling",
+		id: blockId,
+		importance: 20,
+		label: traceLabel
+	})
+
 	peptidesPfBuilder := pframes.pFrameBuilder()
 	if args.filterInvalidPeptides {
 		filterRun := render.createEphemeral(filterPeptidesTpl, {
@@ -420,7 +419,7 @@ wf.body(func(args) {
 			}
 		)
 		for k, v in filteredPerSampleXsv {
-			peptidesPfBuilder.add("perSample/" + k, v.spec, v.data)
+			peptidesPfBuilder.add("perSample/" + k, trace.inject(v.spec), v.data)
 		}
 
 		filteredPerPeptideXsv := xsv.importFile(
@@ -439,11 +438,23 @@ wf.body(func(args) {
 			}
 		)
 		for k, v in filteredPerPeptideXsv {
-			peptidesPfBuilder.add("perPeptide/" + k, v.spec, v.data)
+			peptidesPfBuilder.add("perPeptide/" + k, trace.inject(v.spec), v.data)
 		}
 	} else {
-		perSampleResults.addXsvOutputToBuilder(peptidesPfBuilder, "peptideTableXsv", "perSample/")
-		aggregateResults.addXsvOutputToBuilder(peptidesPfBuilder, "perPeptideXsv", "perPeptide/")
+		for columnName in perSampleResults.listXsvColumns("peptideTableXsv") {
+			peptidesPfBuilder.add(
+				"perSample/" + columnName,
+				trace.inject(perSampleResults.outputSpec("peptideTableXsv", columnName)),
+				perSampleResults.outputData("peptideTableXsv", columnName)
+			)
+		}
+		for columnName in aggregateResults.listXsvColumns("perPeptideXsv") {
+			peptidesPfBuilder.add(
+				"perPeptide/" + columnName,
+				trace.inject(aggregateResults.outputSpec("perPeptideXsv", columnName)),
+				aggregateResults.outputData("perPeptideXsv", columnName)
+			)
+		}
 	}
 	peptidesPf := peptidesPfBuilder.build()
 
