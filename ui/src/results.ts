@@ -4,6 +4,7 @@ import { computed } from "vue";
 import type { SampleComposition } from "./aaComposition";
 import { parseCompositionNdjson } from "./aaComposition";
 import { useApp } from "./app";
+import { parseSeqListsNdjson } from "./seqLists";
 import type { SampleDistributions } from "./distributions";
 import { parseDistributionsNdjson } from "./distributions";
 import type { FunnelEntry } from "./pipelineFunnel";
@@ -18,10 +19,18 @@ export type SampleResult = {
   label: string;
   progress: string;
   aaComposition?: SampleComposition;
+  sequences?: string[];
   qcChecks?: QcCheckResult[];
   pipelineFunnel?: FunnelEntry[];
   distributions?: SampleDistributions;
 };
+
+const seqListsMap = computed<Map<string, string[]> | undefined>(() => {
+  const app = useApp();
+  const blob = app.model.outputs.aaSequences;
+  const content = blob ? reactiveFileContent.getContentString(blob.handle)?.value : undefined;
+  return content ? parseSeqListsNdjson(content) : undefined;
+});
 
 /** Per-sample AA composition, parsed once and cached until the file changes */
 const compositionMap = computed<Map<string, SampleComposition> | undefined>(() => {
@@ -179,6 +188,7 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
         label: sampleLabels?.[sampleId] ?? sampleId,
         progress: progressStr,
         aaComposition: compositionMap.value?.get(sampleId),
+        sequences: seqListsMap.value?.get(sampleId),
         qcChecks: qcChecksMap.value?.get(sampleId),
         pipelineFunnel: funnelMap.value?.get(sampleId),
         distributions: distributionsMap.value?.get(sampleId),

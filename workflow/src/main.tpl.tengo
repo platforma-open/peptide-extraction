@@ -351,6 +351,7 @@ wf.body(func(args) {
 
 	qcTsvFile := qcRun.output("qcTable")
 	aaCompositionFile := qcRun.output("aaComposition")
+	aaSequencesFile := qcRun.output("aaSequences")
 	qcChecksFile := qcRun.output("qcChecks")
 	pipelineFunnelFile := qcRun.output("pipelineFunnel")
 	distributionsFile := qcRun.output("distributions")
@@ -463,6 +464,7 @@ wf.body(func(args) {
 		qcReportTable: pframes.exportFrame(qcPf),
 		stepLogs: perSampleResults.outputData("stepLogs"),
 		aaComposition: file.exportFile(aaCompositionFile),
+		aaSequences: file.exportFile(aaSequencesFile),
 		qcChecks: file.exportFile(qcChecksFile),
 		pipelineFunnel: file.exportFile(pipelineFunnelFile),
 		distributions: file.exportFile(distributionsFile),

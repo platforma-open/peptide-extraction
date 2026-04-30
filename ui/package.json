@@ -10,6 +10,7 @@
     "check": "ts-builder check --target browser"
   },
   "dependencies": {
+    "@milaboratories/multi-sequence-alignment": "catalog:",
     "@platforma-open/milaboratories.peptide-profiling.model": "workspace:*",
     "@platforma-sdk/model": "catalog:",
     "@platforma-sdk/ui-vue": "catalog:",

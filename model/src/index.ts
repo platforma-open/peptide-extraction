@@ -55,35 +55,16 @@ export const ProgressPrefix = "[==PROGRESS==]";
 export const ProgressPattern =
   /(?<stage>[^:]*):(?: *(?<progress>[0-9.]+)%)?(?: *ETA: *(?<eta>.+))?/;
 
-// Legacy args type from V1/V2 — all fields were optional
-type LegacyArgs = {
-  input?: PlRef;
-  pattern?: string;
-  minReadsPerConsensus?: number;
-  errorBudget?: number;
-  maxIndels?: number;
-  autoR1OnlyAssembly?: boolean;
-  perProcessMemGB?: number;
-  perProcessCPUs?: number;
-};
-
-const dataModel = new DataModelBuilder()
-  .from<BlockData>("v1")
-  .upgradeLegacy<LegacyArgs, Record<string, never>>(({ args }) => ({
-    ...args,
-    qcTableState: createPlDataTableStateV2(),
-    resultsTableState: createPlDataTableStateV2(),
-  }))
-  .init(() => ({
-    minReadsPerConsensus: 2,
-    errorBudget: 10,
-    maxIndels: 1,
-    autoR1OnlyAssembly: true,
-    filterInvalidPeptides: true,
-    qcTableState: createPlDataTableStateV2(),
-    resultsTableState: createPlDataTableStateV2(),
-    useWildcards: true,
-  }));
+const dataModel = new DataModelBuilder().from<BlockData>("v1").init(() => ({
+  minReadsPerConsensus: 2,
+  errorBudget: 10,
+  maxIndels: 1,
+  autoR1OnlyAssembly: true,
+  filterInvalidPeptides: true,
+  qcTableState: createPlDataTableStateV2(),
+  resultsTableState: createPlDataTableStateV2(),
+  useWildcards: true,
+}));
 
 export const platforma = BlockModelV3.create(dataModel)
 
@@ -198,6 +179,12 @@ export const platforma = BlockModelV3.create(dataModel)
   .output("aaComposition", (ctx) => {
     return ctx.outputs
       ?.resolve({ field: "aaComposition", assertFieldType: "Input", allowPermanentAbsence: true })
+      ?.getFileHandle();
+  })
+
+  .output("aaSequences", (ctx) => {
+    return ctx.outputs
+      ?.resolve({ field: "aaSequences", assertFieldType: "Input", allowPermanentAbsence: true })
       ?.getFileHandle();
   })
 

@@ -19,10 +19,9 @@ import type { ColDef, GridApi, GridReadyEvent } from "ag-grid-enterprise";
 import { ClientSideRowModelModule, ModuleRegistry } from "ag-grid-enterprise";
 import { AgGridVue } from "ag-grid-vue3";
 import { computed, reactive, shallowRef, watch, watchEffect } from "vue";
-import type { SampleComposition } from "../aaComposition";
 import { useApp } from "../app";
-import AaCompositionHeatmapCell from "../components/AaCompositionHeatmapCell.vue";
 import PipelineFunnelCell from "../components/PipelineFunnelCell.vue";
+import SeqLogoCell from "../components/SeqLogoCell.vue";
 import { parseProgressString } from "../parseProgress";
 import type { FunnelEntry } from "../pipelineFunnel";
 import type { QcStatus } from "../qcChecks";
@@ -171,17 +170,17 @@ const columnDefs: ColDef<SampleResult>[] = [
       params: { value: cellData.data?.pipelineFunnel },
     }),
   }),
-  createAgGridColDef<SampleResult, SampleComposition | undefined>({
-    colId: "aaComposition",
-    headerName: "AA Composition",
+  createAgGridColDef<SampleResult, string[] | undefined>({
+    colId: "seqLogo",
+    headerName: "Seq Logo",
     headerComponentParams: { type: "Text" } satisfies PlAgHeaderComponentParams,
     flex: 1,
     cellStyle: {
       "--ag-cell-horizontal-padding": "4px",
     },
     cellRendererSelector: (cellData) => ({
-      component: AaCompositionHeatmapCell,
-      params: { value: cellData.data?.aaComposition },
+      component: SeqLogoCell,
+      params: { value: cellData.data?.sequences },
     }),
   }),
 ];
