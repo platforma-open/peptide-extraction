@@ -1,0 +1,453 @@
+// Column spec definitions for the peptide extraction block.
+// Used by main.tpl.tengo for processColumn output definitions and exports.
+// Specs use universal pl7.app/ names.
+
+maps := import("@platforma-sdk/workflow-tengo:maps")
+
+// Helper: merge standard table annotations
+a := func(order, defaultVisibility, spec) {
+	return maps.merge(spec, {
+		"pl7.app/table/orderPriority": string(order),
+		"pl7.app/table/visibility": is_undefined(defaultVisibility) ? "hidden" : defaultVisibility ? "default" : "optional"
+	})
+}
+
+// Axis spec for variantKey (unique per distinct peptide nucleotide sequence)
+variantKeyAxisSpec := func(blockId) {
+	return {
+		column: "variantKey",
+		naRegex: "",
+		spec: {
+			name: "pl7.app/variantKey",
+			type: "String",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			annotations: {
+				"pl7.app/label": "Peptide ID",
+				"pl7.app/table/fontFamily": "monospace",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "110000",
+				"pl7.app/segmentedBy": "[\"pl7.app/peptide/extractionRunId\"]"
+			}
+		}
+	}
+}
+
+// --- Per-sample columns (2 axes: sampleId, variantKey) ---
+//
+// Emits UMI-based abundance columns (uniqueMoleculeCount/Fraction) only when
+// hasUmi is true. Without UMI, readCount/readFraction become the primary
+// abundance (isPrimary + isAnchor).
+
+columnsPerSampleFn := func(hasUmi) {
+	cols := []
+
+	if hasUmi {
+		cols = append(cols, {
+			column: "uniqueMoleculeCount",
+			id: "umi-count",
+			allowNA: false,
+			spec: {
+				name: "pl7.app/uniqueMoleculeCount",
+				valueType: "Long",
+				annotations: a(88000, true, {
+					"pl7.app/min": "1",
+					"pl7.app/isAbundance": "true",
+					"pl7.app/abundance/unit": "molecules",
+					"pl7.app/abundance/normalized": "false",
+					"pl7.app/abundance/isPrimary": "true",
+					"pl7.app/isAnchor": "true",
+					"pl7.app/label": "Number of UMIs"
+				})
+			}
+		}, {
+			column: "uniqueMoleculeFraction",
+			id: "umi-fraction",
+			allowNA: false,
+			spec: {
+				name: "pl7.app/uniqueMoleculeFraction",
+				valueType: "Double",
+				annotations: a(87500, true, {
+					"pl7.app/min": "0",
+					"pl7.app/max": "1",
+					"pl7.app/isAbundance": "true",
+					"pl7.app/abundance/unit": "molecules",
+					"pl7.app/abundance/normalized": "true",
+					"pl7.app/abundance/isPrimary": "true",
+					"pl7.app/label": "Fraction of UMIs",
+					"pl7.app/format": ".2p"
+				})
+			}
+		})
+	}
+
+	// readCount/readFraction annotations depend on hasUmi:
+	//   - With UMI: read counts are a secondary abundance (default-hidden)
+	//   - Without UMI: read counts are the primary abundance (isPrimary + isAnchor, default-visible)
+	readCountAnnotations := {
+		"pl7.app/min": "1",
+		"pl7.app/isAbundance": "true",
+		"pl7.app/abundance/unit": "reads",
+		"pl7.app/abundance/normalized": "false",
+		"pl7.app/label": "Number of Reads"
+	}
+	readFractionAnnotations := {
+		"pl7.app/min": "0",
+		"pl7.app/max": "1",
+		"pl7.app/isAbundance": "true",
+		"pl7.app/abundance/unit": "reads",
+		"pl7.app/abundance/normalized": "true",
+		"pl7.app/label": "Fraction of Reads",
+		"pl7.app/format": ".2p"
+	}
+	if !hasUmi {
+		readCountAnnotations["pl7.app/abundance/isPrimary"] = "true"
+		readCountAnnotations["pl7.app/isAnchor"] = "true"
+		readFractionAnnotations["pl7.app/abundance/isPrimary"] = "true"
+	}
+
+	cols = append(cols, {
+		column: "readCount",
+		id: "read-count",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/readCount",
+			valueType: "Long",
+			annotations: a(90000, !hasUmi, readCountAnnotations)
+		}
+	}, {
+		column: "readFraction",
+		id: "read-fraction",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/readFraction",
+			valueType: "Double",
+			annotations: a(89000, !hasUmi, readFractionAnnotations)
+		}
+	})
+
+	return cols
+}
+
+// --- Per-variant (peptide) columns from sample template (1 axis: variantKey) ---
+// Sequences and lengths, output by the Python properties script.
+
+columnsPerVariantFromSample := [
+	{
+		column: "nSeqPeptide",
+		id: "n-seq-peptide",
+		spec: {
+			name: "pl7.app/sequence",
+			valueType: "String",
+			domain: {
+				"pl7.app/feature": "peptide",
+				"pl7.app/alphabet": "nucleotide"
+			},
+			annotations: a(80000, false, {
+				"pl7.app/isAssemblingFeature": "true",
+				"pl7.app/isMainSequence": "true",
+				"pl7.app/table/fontFamily": "monospace",
+				"pl7.app/label": "Peptide nt"
+			})
+		}
+	},
+	{
+		column: "aaSeqPeptide",
+		id: "aa-seq-peptide",
+		spec: {
+			name: "pl7.app/sequence",
+			valueType: "String",
+			domain: {
+				"pl7.app/feature": "peptide",
+				"pl7.app/alphabet": "aminoacid"
+			},
+			annotations: a(79900, true, {
+				"pl7.app/isAssemblingFeature": "true",
+				"pl7.app/isMainSequence": "true",
+				"pl7.app/table/fontFamily": "monospace",
+				"pl7.app/label": "Peptide aa"
+			})
+		}
+	},
+	{
+		column: "aaLengthPeptide",
+		id: "aa-length-peptide",
+		spec: {
+			name: "pl7.app/sequenceLength",
+			valueType: "Int",
+			domain: {
+				"pl7.app/feature": "peptide",
+				"pl7.app/alphabet": "aminoacid"
+			},
+			annotations: a(79800, true, {
+				"pl7.app/label": "Peptide length (aa)"
+			})
+		}
+	},
+	{
+		column: "ntLengthPeptide",
+		id: "nt-length-peptide",
+		spec: {
+			name: "pl7.app/sequenceLength",
+			valueType: "Int",
+			domain: {
+				"pl7.app/feature": "peptide",
+				"pl7.app/alphabet": "nucleotide"
+			},
+			annotations: a(79700, false, {
+				"pl7.app/label": "Peptide length (nt)"
+			})
+		}
+	}
+]
+
+// --- Aggregation columns (1 axis: variantKey, computed cross-sample) ---
+//
+// Aggregates uniqueMolecule* across samples
+
+columnsAggregatedFn := func(hasUmi) {
+	cols := []
+
+	if hasUmi {
+		cols = append(cols, {
+			column: "uniqueMoleculeCountSum",
+			id: "umi-count-total",
+			allowNA: false,
+			spec: {
+				name: "pl7.app/uniqueMoleculeCountTotal",
+				valueType: "Long",
+				annotations: a(87120, true, {
+					"pl7.app/min": "1",
+					"pl7.app/isAbundance": "true",
+					"pl7.app/abundance/unit": "molecules",
+					"pl7.app/abundance/normalized": "false",
+					"pl7.app/label": "Supporting UMIs"
+				})
+			}
+		}, {
+			column: "uniqueMoleculeFractionMean",
+			id: "umi-fraction-mean",
+			allowNA: false,
+			spec: {
+				name: "pl7.app/uniqueMoleculeFractionMean",
+				valueType: "Double",
+				annotations: a(87130, false, {
+					"pl7.app/description": "The average UMI fraction of a peptide across all samples where it is present.",
+					"pl7.app/min": "0",
+					"pl7.app/max": "1",
+					"pl7.app/isAbundance": "true",
+					"pl7.app/abundance/unit": "molecules",
+					"pl7.app/abundance/normalized": "true",
+					"pl7.app/label": "Mean Fraction of UMIs",
+					"pl7.app/format": ".2p"
+				})
+			}
+		})
+	}
+
+	if !hasUmi {
+		cols = append(cols, {
+			column: "readCountSum",
+			id: "read-count-total",
+			allowNA: false,
+			spec: {
+				name: "pl7.app/readCountTotal",
+				valueType: "Long",
+				annotations: a(87125, true, {
+					"pl7.app/min": "1",
+					"pl7.app/isAbundance": "true",
+					"pl7.app/abundance/unit": "reads",
+					"pl7.app/abundance/normalized": "false",
+					"pl7.app/label": "Supporting Reads"
+				})
+			}
+		}, {
+			column: "readFractionMean",
+			id: "read-fraction-mean",
+			allowNA: false,
+			spec: {
+				name: "pl7.app/readFractionMean",
+				valueType: "Double",
+				annotations: a(87135, false, {
+					"pl7.app/description": "The average read fraction of a peptide across all samples where it is present.",
+					"pl7.app/min": "0",
+					"pl7.app/max": "1",
+					"pl7.app/isAbundance": "true",
+					"pl7.app/abundance/unit": "reads",
+					"pl7.app/abundance/normalized": "true",
+					"pl7.app/label": "Mean Fraction of Reads",
+					"pl7.app/format": ".2p"
+				})
+			}
+		})
+	}
+
+	cols = append(cols, {
+		column: "sampleCount",
+		id: "sample-count",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/sampleCount",
+			valueType: "Int",
+			annotations: a(87110, true, {
+				"pl7.app/min": "1",
+				"pl7.app/isAbundance": "true",
+				"pl7.app/abundance/unit": "samples",
+				"pl7.app/abundance/normalized": "false",
+				"pl7.app/label": "Number of Samples"
+			})
+		}
+	}, {
+		column: "peptideLabel",
+		id: "peptide-label",
+		spec: {
+			name: "pl7.app/label",
+			valueType: "String",
+			annotations: a(100000, false, {
+				"pl7.app/label": "Peptide Id"
+			})
+		}
+	}, {
+		column: "hasTrailingNucleotides",
+		id: "has-trailing-nucleotides",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/peptide/qc/hasTrailingNucleotides",
+			valueType: "String",
+			annotations: a(60000, false, {
+				"pl7.app/label": "Trailing Nucleotides"
+			})
+		}
+	}, {
+		column: "hasEarlyStopCodon",
+		id: "has-early-stop-codon",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/peptide/qc/hasEarlyStopCodon",
+			valueType: "String",
+			annotations: a(59900, false, {
+				"pl7.app/label": "Early Stop Codon"
+			})
+		}
+	})
+	return cols
+}
+
+// --- QC columns (0 extra axes, sampleId comes from processColumn iteration) ---
+// Built as a function so the trailing-nt and early-stop column labels can flip
+// between "count" wording and "Peptides Dropped - ..." wording depending on
+// whether the user enabled the filter in advanced settings.
+
+columnsQcFn := func(filterInvalid, hasUmi) {
+	trailingLabel := "Trailing Nucleotides"
+	stopLabel := "Early Stop Codons"
+	if filterInvalid {
+		trailingLabel = "Peptides Dropped - Trailing Nucleotides"
+		stopLabel = "Peptides Dropped - Early Stop Codon"
+	}
+
+	cols := [{
+		column: "totalReads",
+		id: "qc-total-reads",
+		spec: {
+			name: "pl7.app/peptide/qc/totalReads",
+			valueType: "Long",
+			annotations: a(50000, true, {
+				"pl7.app/label": "Total Reads"
+			})
+		}
+	}]
+
+	if hasUmi {
+		cols = append(cols, {
+			column: "totalUMIs",
+			id: "qc-total-umis",
+			spec: {
+				name: "pl7.app/peptide/qc/totalUMIs",
+				valueType: "Long",
+				annotations: a(49900, true, {
+					"pl7.app/label": "Total UMIs"
+				})
+			}
+		}, {
+			column: "readsPerUmi",
+			id: "qc-reads-per-umi",
+			spec: {
+				name: "pl7.app/peptide/qc/readsPerUmi",
+				valueType: "Double",
+				annotations: a(49850, true, {
+					"pl7.app/label": "Reads per UMI",
+					"pl7.app/format": ".1f",
+					"pl7.app/description": "Average sequencing depth per successfully-extracted peptide molecule."
+				})
+			}
+		})
+	}
+
+	cols = append(cols, {
+		column: "uniquePeptides",
+		id: "qc-unique-peptides",
+		spec: {
+			name: "pl7.app/peptide/qc/uniquePeptides",
+			valueType: "Int",
+			annotations: a(49800, true, {
+				"pl7.app/label": "Unique Peptides"
+			})
+		}
+	}, {
+		column: "avgLengthAa",
+		id: "qc-avg-length-aa",
+		spec: {
+			name: "pl7.app/peptide/qc/avgLengthAa",
+			valueType: "Double",
+			annotations: a(49700, true, {
+				"pl7.app/label": "Avg Peptide Length (aa)",
+				"pl7.app/format": ".1f"
+			})
+		}
+	}, {
+		column: "avgLengthNt",
+		id: "qc-avg-length-nt",
+		spec: {
+			name: "pl7.app/peptide/qc/avgLengthNt",
+			valueType: "Double",
+			annotations: a(49600, true, {
+				"pl7.app/label": "Avg Peptide Length (nt)",
+				"pl7.app/format": ".1f"
+			})
+		}
+	}, {
+		column: "hasTrailingNucleotides",
+		id: "qc-has-trailing-nt",
+		spec: {
+			name: "pl7.app/peptide/qc/hasTrailingNucleotides",
+			valueType: "Int",
+			annotations: a(49500, true, {
+				"pl7.app/label": trailingLabel,
+				"pl7.app/description": "Number of peptides in this sample with a nucleotide sequence whose length is not divisible by 3, meaning extra bases were trimmed before translation."
+			})
+		}
+	}, {
+		column: "hasEarlyStopCodon",
+		id: "qc-has-early-stop",
+		spec: {
+			name: "pl7.app/peptide/qc/hasEarlyStopCodon",
+			valueType: "Int",
+			annotations: a(49400, true, {
+				"pl7.app/label": stopLabel,
+				"pl7.app/description": "Number of peptides in this sample containing an internal stop codon (TAA, TAG, or TGA) within the reading frame, causing the translated amino acid sequence to be shorter than expected."
+			})
+		}
+	})
+
+	return cols
+}
+
+export {
+	variantKeyAxisSpec: variantKeyAxisSpec,
+	columnsPerSampleFn: columnsPerSampleFn,
+	columnsPerVariantFromSample: columnsPerVariantFromSample,
+	columnsAggregatedFn: columnsAggregatedFn,
+	columnsQcFn: columnsQcFn
+}

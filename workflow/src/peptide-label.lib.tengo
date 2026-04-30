@@ -1,0 +1,51 @@
+// Peptide label generation — hash-based.
+//
+// Mirrors mixcr-clonotyping's clonotype-label.lib.tengo. The label is derived
+// from a SHA-256 hash of the source column (typically variantKey, the raw
+// nucleotide sequence). 
+//
+// Output format: P-XXXXX or P-XXXXX-N (when collisions occur on the same
+// 5-char prefix, the lowest-keyed peptide gets P-XXXXX, the next gets
+// P-XXXXX-2, and so on).
+
+pt := import("@platforma-sdk/workflow-tengo:pt")
+
+addPeptideLabelColumnsPt := func(df, sourceCol, labelCol) {
+	prefixTempCol := labelCol + "_prefix_temp"
+	rankTempCol := labelCol + "_rank_temp"
+	hashTempCol := labelCol + "_hash_temp"
+
+	// Step 1: hash the source column (SHA-256 → base64_alphanumeric, 120 bits)
+	df = df.withColumns(
+		pt.col(sourceCol).fillNull("").hash("sha256", "base64_alphanumeric", 120).alias(hashTempCol)
+	)
+
+	// Step 2: 5-char prefix from hash (strip digits → 26 letters → first 5 → uppercase)
+	df = df.withColumns(
+		pt.col(hashTempCol).strReplace("\\d", "", { replaceAll: true }).
+			strSlice(0, 5).
+			strToUpper().
+			alias(prefixTempCol)
+	)
+
+	// Step 3: rank within prefix group, ordered deterministically by source col
+	df = df.withColumns(
+		pt.rank(pt.col(sourceCol)).
+			over(pt.col(prefixTempCol)).
+			alias(rankTempCol)
+	)
+
+	// Step 4: P-XXXXX or P-XXXXX-N
+	df = df.withColumns(
+		pt.when(pt.col(rankTempCol).gt(pt.lit(1))).
+			then(pt.concatStr([pt.lit("P"), pt.col(prefixTempCol), pt.col(rankTempCol).cast("String")], { delimiter: "-" })).
+			otherwise(pt.concatStr([pt.lit("P"), pt.col(prefixTempCol)], { delimiter: "-" })).
+			alias(labelCol)
+	)
+
+	return df.withoutColumns(prefixTempCol, rankTempCol, hashTempCol)
+}
+
+export {
+	addPeptideLabelColumnsPt: addPeptideLabelColumnsPt
+}

@@ -1,0 +1,326 @@
+// Downstream subtemplate for per-sample peptide extraction.
+//
+// Receives the parse results and the parse-gate decision from the parent
+// (mitool-pipeline.tpl.tengo). When `shouldContinue` is true, runs the rest
+// of the mitool chain (refine -> sort -> consensus -> tag-stat -> collapse)
+// plus QC-report extraction. When false, emits placeholder outputs so the
+// sample still shows up in the main table with a loud ParseMatchRate alert
+// and the pipeline funnel showing 100% loss at the parse stage.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+pcolumn := import("@platforma-sdk/workflow-tengo:pframes.pcolumn")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+render := import("@platforma-sdk/workflow-tengo:render")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+units := import("@platforma-sdk/workflow-tengo:units")
+
+json := import("json")
+
+self.defineOutputs(
+	"tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions",
+	"consensusMic", "consensusReport"
+)
+
+mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
+qcChecksSw := assets.importSoftware("@platforma-open/milaboratories.peptide-profiling.software:qc-checks")
+
+umiConsensusTpl := assets.importTemplate(":umi-consensus")
+
+progressPrefix := "[==PROGRESS==]"
+
+// Empty peptides table — header only, matching the schema the per-sample
+// xsv importer expects in main.tpl.tengo via columnSpecs.columnsPerSampleFn.
+// With UMI: 5 columns. Without UMI: 3 columns (no uniqueMolecule* — each read
+// is its own molecule with no barcode to dedup against).
+emptyPeptidesTsvWithUmi := "variantKey\tuniqueMoleculeCount\treadCount\tuniqueMoleculeFraction\treadFraction\n"
+emptyPeptidesTsvNoUmi := "variantKey\treadCount\treadFraction\n"
+
+self.body(func(inputs) {
+	decisionData := json.decode(string(inputs.decision.getData()))
+	shouldContinue := decisionData.shouldContinue
+
+	parsedMic := inputs.parsedMic
+	parseReport := inputs.parseReport
+	parseLogStream := inputs.parseLogStream
+
+	parts := inputs.patternParts
+	r1UmiName := parts.r1.umiName
+	r1InsertName := parts.r1.insertName
+	hasR1Umi := !is_undefined(parts.r1.umi) && !is_undefined(r1UmiName) && r1UmiName != ""
+	r2UmiName := ""
+	r2InsertName := ""
+	hasR2Umi := false
+	hasR2Insert := false
+	if !is_undefined(parts.r2) {
+		r2UmiName = parts.r2.umiName
+		r2InsertName = parts.r2.insertName
+		hasR2Umi = !is_undefined(parts.r2.umi) && !is_undefined(r2UmiName) && r2UmiName != ""
+		hasR2Insert = !is_undefined(r2InsertName) && r2InsertName != ""
+	}
+	// Any UMI on either read → run the dedup pipeline (refine/sort/consensus).
+	// No UMIs at all → skip those stages and go parse → tag-stat → collapse
+	// directly (each read is its own "molecule").
+	hasAnyUmi := hasR1Umi || hasR2Umi
+
+	errorBudget := inputs.errorBudget
+	maxIndels := inputs.maxIndels
+	minReadsPerConsensus := inputs.minReadsPerConsensus
+	autoR1OnlyAssembly := inputs.autoR1OnlyAssembly
+	mitoolMemGB := inputs.mitoolMemGB
+	mitoolCPUs := inputs.mitoolCPUs
+	collapseMemGB := inputs.collapseMemGB
+	collapseCPUs := inputs.collapseCPUs
+	isPairedEnd := inputs.isPairedEnd
+
+	mitoolMem := string(mitoolMemGB) + "GiB"
+
+	// =========================================================================
+	// Empty branch: parse matched 0 reads. Skip the remaining mitool steps and
+	// emit placeholder files. qc_checks.py is reused with empty refine/consensus
+	// reports — its regexes return nothing for those sections, and the funnel
+	// ends up showing input -> parse (100% lost), which is exactly the diagnostic
+	// the user needs.
+	// =========================================================================
+	if !shouldContinue {
+		emptyPeptidesTsv := emptyPeptidesTsvNoUmi
+		if hasAnyUmi {
+			emptyPeptidesTsv = emptyPeptidesTsvWithUmi
+		}
+		emptyBranchCmd := exec.builder().
+			writeFile("refine_report.txt", "").
+			writeFile("consensus_report.txt", "").
+			writeFile("peptides.tsv", emptyPeptidesTsv).
+			writeFile("qc_checks.ndjson", "").
+			writeFile("pipeline_funnel.ndjson", "").
+			writeFile("distributions.ndjson", "").
+			software(qcChecksSw).
+			cpu(1).
+			mem("512MiB").
+			arg("parse_report.txt").
+			arg("refine_report.txt").
+			arg("consensus_report.txt").
+			arg("qc_checks.ndjson").
+			arg("pipeline_funnel.ndjson").
+			arg("distributions.ndjson").
+			addFile("parse_report.txt", parseReport).
+			saveFile("peptides.tsv").
+			saveFile("qc_checks.ndjson").
+			saveFile("pipeline_funnel.ndjson").
+			saveFile("distributions.ndjson").
+			run()
+
+		// Only the parse log exists in this branch.
+		emptyStepLogs := pcolumn.resourceMapBuilder(1)
+		emptyStepLogs.add(["1-parse"], parseLogStream)
+
+		return {
+			tsv: emptyBranchCmd.getFile("peptides.tsv"),
+			stepLogs: emptyStepLogs.build(),
+			qcChecks: emptyBranchCmd.getFile("qc_checks.ndjson"),
+			pipelineFunnel: emptyBranchCmd.getFile("pipeline_funnel.ndjson"),
+			distributions: emptyBranchCmd.getFile("distributions.ndjson"),
+			consensusMic: parsedMic,
+			consensusReport: parseReport
+		}
+	}
+
+	// =========================================================================
+	// Normal branch: parse found reads.
+	//
+	// With UMI: run refine -> sort -> consensus -> tag-stat -> collapse, then
+	//   extract QC metrics from all three mitool reports.
+	//
+	// Without UMI: skip refine/sort/consensus entirely. Run tag-stat directly 
+	//	 on parsed.mic using only the R1 tag, and pass empty placeholder reports
+	//   to qc_checks.
+	// =========================================================================
+
+	// Declared outside the branch so the tag-stat / qc-checks / stepLogs code
+	// below can reference them uniformly.
+	umiRun := undefined
+	tagStatInputMic := parsedMic
+	tagStatInputFilename := "parsed.mic"
+
+	if hasAnyUmi {
+		// Refine -> sort -> consensus lives in its own sub-template so the
+		// whole chain forms a memoization boundary
+		umiRun = render.create(umiConsensusTpl, {
+			parsedMic: parsedMic,
+			hasR1Umi: hasR1Umi,
+			hasR2Umi: hasR2Umi,
+			hasR2Insert: hasR2Insert,
+			r1UmiName: r1UmiName,
+			r2UmiName: r2UmiName,
+			r1InsertName: r1InsertName,
+			r2InsertName: r2InsertName,
+			maxIndels: maxIndels,
+			minReadsPerConsensus: minReadsPerConsensus,
+			mitoolCPUs: mitoolCPUs,
+			mitoolMemGB: mitoolMemGB,
+			isPairedEnd: isPairedEnd
+		})
+
+		tagStatInputMic = umiRun.output("consensusMic")
+		tagStatInputFilename = "consensus.mic"
+
+		// TODO: R1-only fallback logic
+		// When autoR1OnlyAssembly is enabled, parse the consensus report to check
+		// assembly discard rate. If >10%, re-run with R1-only assembly.
+	}
+
+	// Step 5: mitool tag-stat (with-UMI: reads consensus.mic; no-UMI: reads parsed.mic)
+	tagStatBuilder := exec.builder().
+		writeFile("tagstat.tsv", "").
+		printErrStreamToStdout().
+		saveStdoutStream().
+		env("MI_PROGRESS_PREFIX", progressPrefix).
+		software(mitoolSw).
+		cpu(mitoolCPUs).
+		mem(mitoolMem).
+		arg("tag-stat").
+		arg("-t").arg(r1InsertName)
+
+	if hasR1Umi {
+		tagStatBuilder = tagStatBuilder.arg("-t").arg(r1UmiName)
+	}
+	if hasR2Umi {
+		tagStatBuilder = tagStatBuilder.arg("-t").arg(r2UmiName)
+	}
+
+	tagStatCmd := tagStatBuilder.
+		addFile(tagStatInputFilename, tagStatInputMic).
+		arg(tagStatInputFilename).
+		arg("tagstat.tsv").
+		saveFile("tagstat.tsv").
+		run()
+
+	tagStatTsv := tagStatCmd.getFile("tagstat.tsv")
+
+	// Step 6: Collapse tag-stat to peptide table
+	collapseWf := pt.workflow().
+		mem(collapseMemGB * units.GiB).
+		cpu(collapseCPUs)
+
+	tagStatSchema := [{ column: r1InsertName, type: "String" }]
+	if hasR1Umi {
+		tagStatSchema = append(tagStatSchema, { column: r1UmiName, type: "String" })
+	}
+	if hasR2Umi {
+		tagStatSchema = append(tagStatSchema, { column: r2UmiName, type: "String" })
+	}
+	tagStatSchema = append(tagStatSchema, { column: "count", type: "Long" })
+	tagStatSchema = append(tagStatSchema, { column: "totalWeight", type: "Double" })
+
+	df := collapseWf.frame({
+		file: tagStatTsv,
+		xsvType: "tsv",
+		schema: tagStatSchema
+	}, {
+		id: "tagstat",
+		inferSchema: false
+	})
+
+	// With any UMI: uniqueMoleculeCount = number of distinct UMI-tag groups per
+	//   peptide (tag-stat emits one row per distinct (R1, UMI[s]) combo, so
+	//   `count()` = number of unique molecules). Output is 5-column:
+	//   variantKey + uniqueMoleculeCount/Fraction + readCount/Fraction.
+	// Without UMI: no barcode dedup possible — uniqueMolecule* columns are not
+	//   emitted. Output is 3-column: variantKey + readCount/Fraction. Primary
+	//   abundance annotations flip to readCount (see column-specs.lib.tengo and
+	//   blocks/mixcr-clonotyping/workflow/src/calculate-export-specs.lib.tengo).
+	collapsed := undefined
+	if hasAnyUmi {
+		collapsed = df.groupBy(r1InsertName).agg(
+			pt.col(r1InsertName).count().alias("uniqueMoleculeCount"),
+			pt.col("count").sum().alias("readCount")
+		).select(
+			pt.col(r1InsertName).alias("variantKey"),
+			pt.col("uniqueMoleculeCount"),
+			pt.col("readCount"),
+			pt.col("uniqueMoleculeCount").cast("Double").truediv(
+				pt.col("uniqueMoleculeCount").sum()
+			).alias("uniqueMoleculeFraction"),
+			pt.col("readCount").cast("Double").truediv(
+				pt.col("readCount").sum()
+			).alias("readFraction")
+		)
+	} else {
+		collapsed = df.groupBy(r1InsertName).agg(
+			pt.col("count").sum().alias("readCount")
+		).select(
+			pt.col(r1InsertName).alias("variantKey"),
+			pt.col("readCount"),
+			pt.col("readCount").cast("Double").truediv(
+				pt.col("readCount").sum()
+			).alias("readFraction")
+		)
+	}
+
+	collapsed.save("peptides.tsv")
+	collapseResult := collapseWf.run()
+	peptidesTsv := collapseResult.getFile("peptides.tsv")
+
+	// Step 7: Extract QC checks + funnel + distributions.
+	// With UMI: pass real refine/consensus reports alongside the parse report.
+	// Without UMI: those reports don't exist, so write them inline as empty
+	// files — qc_checks.py regexes return nothing for empty reports, which is
+	// exactly the correct behavior (no UMI-based metrics to compute).
+	qcChecksBuilder := exec.builder().
+		writeFile("qc_checks.ndjson", "").
+		writeFile("pipeline_funnel.ndjson", "").
+		writeFile("distributions.ndjson", "").
+		software(qcChecksSw).
+		cpu(1).
+		mem("512MiB").
+		arg("parse_report.txt").
+		arg("refine_report.txt").
+		arg("consensus_report.txt").
+		arg("qc_checks.ndjson").
+		arg("pipeline_funnel.ndjson").
+		arg("distributions.ndjson").
+		addFile("parse_report.txt", parseReport)
+
+	if hasAnyUmi {
+		qcChecksBuilder = qcChecksBuilder.
+			addFile("refine_report.txt", umiRun.output("refineReport")).
+			addFile("consensus_report.txt", umiRun.output("consensusReport"))
+	} else {
+		qcChecksBuilder = qcChecksBuilder.
+			writeFile("refine_report.txt", "").
+			writeFile("consensus_report.txt", "")
+	}
+
+	qcChecksCmd := qcChecksBuilder.
+		saveFile("qc_checks.ndjson").
+		saveFile("pipeline_funnel.ndjson").
+		saveFile("distributions.ndjson").
+		run()
+
+	stepLogs := pcolumn.resourceMapBuilder(1)
+	stepLogs.add(["1-parse"], parseLogStream)
+	if hasAnyUmi {
+		stepLogs.add(["2-refine"], umiRun.output("refineLog"))
+		stepLogs.add(["3-sort"], umiRun.output("sortLog"))
+		stepLogs.add(["4-consensus"], umiRun.output("consensusLog"))
+	}
+	stepLogs.add(["5-tagstat"], tagStatCmd.getStdoutStream())
+
+	// consensus.mic + consensus_report.txt
+	consensusMicOut := parsedMic
+	consensusReportOut := parseReport
+	if hasAnyUmi {
+		consensusMicOut = umiRun.output("consensusMic")
+		consensusReportOut = umiRun.output("consensusReport")
+	}
+
+	return {
+		tsv: peptidesTsv,
+		stepLogs: stepLogs.build(),
+		qcChecks: qcChecksCmd.getFile("qc_checks.ndjson"),
+		pipelineFunnel: qcChecksCmd.getFile("pipeline_funnel.ndjson"),
+		distributions: qcChecksCmd.getFile("distributions.ndjson"),
+		consensusMic: consensusMicOut,
+		consensusReport: consensusReportOut
+	}
+})

@@ -1,0 +1,403 @@
+// QC report table computation
+//
+// Receives all per-sample peptide tables + per-peptide properties file.
+// For each sample: joins with properties, computes QC stats.
+// Outputs a single TSV with one row per sample.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+units := import("@platforma-sdk/workflow-tengo:units")
+math := import("math")
+json := import("json")
+
+self.awaitState("InputsLocked")
+self.awaitState("propertiesFile", "ResourceReady")
+self.awaitState("peptideTablesData", "ResourceReady")
+self.awaitState("qcChecksData", "ResourceReady")
+self.awaitState("pipelineFunnelData", "ResourceReady")
+self.awaitState("distributionsData", "ResourceReady")
+
+aminoAcids := ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L",
+	"M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
+
+self.body(func(inputs) {
+	peptideTablesData := inputs.peptideTablesData
+	propertiesFileData := inputs.propertiesFile
+	hasUmi := inputs.hasUmi
+
+	// propertiesFile comes from a fully-aggregated processColumn — it's a ResourceMap
+	// with a single entry keyed by []. Extract the actual file.
+	propertiesFileMap := propertiesFileData.inputs()
+	propertiesFile := propertiesFileMap["[]"]
+	ll.assert(!is_undefined(propertiesFile), "properties file not found in resource map")
+
+	peptideTablesMap := peptideTablesData.inputs()
+	numberOfSamples := len(peptideTablesMap)
+
+	wf := pt.workflow().
+		mem(int(math.max(numberOfSamples * 2, 4)) * units.GiB).
+		cpu(1)
+
+	// Load per-peptide properties (shared across samples)
+	propsDf := wf.frame({
+		file: propertiesFile,
+		xsvType: "tsv",
+		schema: [
+			{ column: "variantKey", type: "String" },
+			{ column: "aaSeqPeptide", type: "String" },
+			{ column: "aaLengthPeptide", type: "Int" },
+			{ column: "ntLengthPeptide", type: "Int" },
+			{ column: "hasTrailingNucleotides", type: "Boolean" },
+			{ column: "hasEarlyStopCodon", type: "Boolean" }
+		]
+	}, {
+		id: "props",
+		inferSchema: false
+	})
+
+	// Process each sample: join with properties, compute QC stats + AA composition
+	qcFrames := []
+	compFrames := []
+	// Abundance-weighted invalid-peptide check rows; concatenated into qc-checks.ndjson below.
+	// TODO: calibrate thresholds (5% / 15%)
+	propertyCheckFrames := []
+	seqFrames := []
+	pepLenFrames := []
+	for sKey in maps.getKeys(peptideTablesMap) {
+		sampleFile := peptideTablesMap[sKey]
+		key := json.decode(sKey)
+		sampleId := key[0]
+
+		// Per-sample peptide table schema depends on whether the run has UMIs.
+		// With UMI: 5 columns (variantKey + uniqueMolecule* + read*). Without UMI:
+		// 3 columns (variantKey + read*). We only read what compute-qc needs.
+		sampleSchema := [{ column: "variantKey", type: "String" }]
+		if hasUmi {
+			sampleSchema = append(sampleSchema, { column: "uniqueMoleculeCount", type: "Long" })
+		}
+		sampleSchema = append(sampleSchema, { column: "readCount", type: "Long" })
+
+		sampleDf := wf.frame({
+			file: sampleFile,
+			xsvType: "tsv",
+			schema: sampleSchema
+		}, {
+			id: "sample_" + sampleId,
+			inferSchema: false
+		})
+
+		// Join with properties
+		joined := sampleDf.join(propsDf, { on: "variantKey", how: "left" })
+
+		// Aggregate QC stats (one row)
+		qcSelectExprs := [
+			pt.lit(sampleId).alias("sampleId"),
+			pt.col("readCount").sum().alias("totalReads"),
+			pt.col("variantKey").count().alias("uniquePeptides"),
+			pt.col("aaLengthPeptide").mean().alias("avgLengthAa"),
+			pt.col("ntLengthPeptide").mean().alias("avgLengthNt"),
+			pt.col("hasTrailingNucleotides").cast("Int").sum().alias("hasTrailingNucleotides"),
+			pt.col("hasEarlyStopCodon").cast("Int").sum().alias("hasEarlyStopCodon")
+		]
+		if hasUmi {
+			qcSelectExprs = append(qcSelectExprs,
+				pt.col("uniqueMoleculeCount").sum().alias("totalUMIs")
+			)
+		}
+		qcRow := joined.select(qcSelectExprs...)
+
+		// Derive reads-per-UMI
+		if hasUmi {
+			qcRow = qcRow.withColumns(
+				pt.col("totalReads").cast("Double").truediv(
+					pt.col("totalUMIs").cast("Double")
+				).alias("readsPerUmi")
+			)
+		}
+
+		qcFrames = append(qcFrames, qcRow)
+
+		// Abundance-weighted invalid-peptide rates: fraction of the abundance
+		// whose peptide has each flag set. Weight by UMI count when available,
+		// otherwise by read count.
+		abundanceCol := "readCount"
+		if hasUmi {
+			abundanceCol = "uniqueMoleculeCount"
+		}
+		ratesDf := joined.select(
+			pt.lit(sampleId).alias("sampleId"),
+			pt.col(abundanceCol).cast("Double").sum().alias("_totalAbundance"),
+			pt.when(pt.col("hasTrailingNucleotides")).
+				then(pt.col(abundanceCol).cast("Double")).
+				otherwise(pt.lit(0.0)).
+				sum().
+				alias("_abundanceTrailing"),
+			pt.when(pt.col("hasEarlyStopCodon")).
+				then(pt.col(abundanceCol).cast("Double")).
+				otherwise(pt.lit(0.0)).
+				sum().
+				alias("_abundanceStop")
+		).withColumns(
+			pt.when(pt.col("_totalAbundance").gt(pt.lit(0.0))).
+				then(pt.col("_abundanceTrailing").truediv(pt.col("_totalAbundance"))).
+				otherwise(pt.lit(0.0)).
+				alias("trailingRate"),
+			pt.when(pt.col("_totalAbundance").gt(pt.lit(0.0))).
+				then(pt.col("_abundanceStop").truediv(pt.col("_totalAbundance"))).
+				otherwise(pt.lit(0.0)).
+				alias("stopRate")
+		)
+
+		trailingStatus := pt.when(pt.col("trailingRate").le(pt.lit(0.05))).
+			then(pt.lit("OK")).
+			otherwise(
+				pt.when(pt.col("trailingRate").le(pt.lit(0.15))).
+					then(pt.lit("WARN")).
+					otherwise(pt.lit("ALERT"))
+			)
+
+		stopStatus := pt.when(pt.col("stopRate").le(pt.lit(0.05))).
+			then(pt.lit("OK")).
+			otherwise(
+				pt.when(pt.col("stopRate").le(pt.lit(0.15))).
+					then(pt.lit("WARN")).
+					otherwise(pt.lit("ALERT"))
+			)
+
+		trailingCheckRow := ratesDf.select(
+			pt.lit("properties").alias("step"),
+			trailingStatus.alias("status"),
+			pt.lit("TrailingNucleotidesRate").alias("checkType"),
+			pt.lit("Trailing nucleotides rate").alias("label"),
+			pt.lit("").alias("printedValue"),
+			pt.col("trailingRate").alias("value"),
+			pt.lit(0.05).alias("upper"),
+			pt.lit(0.15).alias("middle"),
+			pt.lit(60).cast("Long").alias("sortOrder"),
+			pt.col("sampleId")
+		)
+
+		stopCheckRow := ratesDf.select(
+			pt.lit("properties").alias("step"),
+			stopStatus.alias("status"),
+			pt.lit("EarlyStopCodonRate").alias("checkType"),
+			pt.lit("Early stop codon rate").alias("label"),
+			pt.lit("").alias("printedValue"),
+			pt.col("stopRate").alias("value"),
+			pt.lit(0.05).alias("upper"),
+			pt.lit(0.15).alias("middle"),
+			pt.lit(70).cast("Long").alias("sortOrder"),
+			pt.col("sampleId")
+		)
+
+		propertyCheckFrames = append(propertyCheckFrames, trailingCheckRow)
+		propertyCheckFrames = append(propertyCheckFrames, stopCheckRow)
+
+		// Per-sample AA composition: weighted by abundance
+		// Formula: comp_AA = sum(countOf(AA) * abundance) / sum(seqLen * abundance) * 100
+		joinedForComp := joined.filter(pt.col("aaSeqPeptide").strLenChars().gt(0))
+
+		// First pass: aggregate raw weighted counts + total weighted length.
+		// Weight by abundance (UMI count if present, otherwise read count).
+		rawExprs := [
+			pt.lit(sampleId).alias("sampleId"),
+			pt.col("aaSeqPeptide").strLenChars().cast("Double").multiply(
+				pt.col(abundanceCol).cast("Double")
+			).sum().alias("_totalLen")
+		]
+		for aa in aminoAcids {
+			rawExprs = append(rawExprs,
+				pt.col("aaSeqPeptide").strCountMatches(aa, {literal: true}).cast("Double").multiply(
+					pt.col(abundanceCol).cast("Double")
+				).sum().alias("_cnt_" + aa)
+			)
+		}
+		compRaw := joinedForComp.select(rawExprs...)
+
+		// Second pass: compute percentages
+		pctExprs := [pt.col("sampleId")]
+		for aa in aminoAcids {
+			pctExprs = append(pctExprs,
+				pt.when(pt.col("_totalLen").gt(0)).then(
+					pt.col("_cnt_" + aa).truediv(pt.col("_totalLen")).multiply(pt.lit(100.0))
+				).otherwise(pt.lit(0.0)).alias(aa)
+			)
+		}
+		compRow := compRaw.select(pctExprs...)
+		compFrames = append(compFrames, compRow)
+
+		// Per-sample sequence list for seq-logo rendering (UI-side alignment).
+		// No filter here: joined always has rows (left join from sampleDf).
+		// UI parser skips null/empty aaSeqPeptide entries.
+		seqSelectExprs := [
+			pt.lit(sampleId).alias("sampleId"),
+			pt.col("aaSeqPeptide")
+		]
+		seqDf := joined.select(seqSelectExprs...).limit(3000)
+		seqFrames = append(seqFrames, seqDf)
+
+		// Per-sample peptide length distributions (AA and NT).
+		// Filter to rows with a valid peptide, then group by length and count.
+		validPeptides := joined.filter(pt.col("aaLengthPeptide").gt(0))
+
+		for lenCol in ["aaLengthPeptide", "ntLengthPeptide"] {
+			distName := "aa_length"
+			if lenCol == "ntLengthPeptide" {
+				distName = "nt_length"
+			}
+			lenDf := validPeptides.groupBy(lenCol).agg(
+				pt.col(lenCol).count().alias("count")
+			).withColumns(
+				pt.col(lenCol).cast("String").alias("bin"),
+				pt.lit(sampleId).alias("sampleId"),
+				pt.lit(distName).alias("dist"),
+				pt.col("count").cast("Long").alias("count"),
+				pt.col("count").cast("Double").truediv(
+					pt.col("count").cast("Double").sum()
+				).multiply(pt.lit(100.0)).alias("pct")
+			).select(
+				pt.col("dist"),
+				pt.col("bin"),
+				pt.col("count"),
+				pt.col("pct"),
+				pt.col("sampleId")
+			)
+			pepLenFrames = append(pepLenFrames, lenDf)
+		}
+	}
+
+	allQc := undefined
+	if len(qcFrames) == 1 {
+		allQc = qcFrames[0]
+	} else {
+		allQc = pt.concat(qcFrames)
+	}
+
+	allComp := undefined
+	if len(compFrames) == 1 {
+		allComp = compFrames[0]
+	} else {
+		allComp = pt.concat(compFrames)
+	}
+
+	// Merge per-sample QC checks (NDJSON files from the Python qc_checks script)
+	qcChecksData := inputs.qcChecksData
+	qcChecksMap := qcChecksData.inputs()
+	qcChecksFrames := []
+	for sKey in maps.getKeys(qcChecksMap) {
+		qcFile := qcChecksMap[sKey]
+		key := json.decode(sKey)
+		sampleId := key[0]
+
+		qcDf := wf.frame({
+			file: qcFile,
+			xsvType: "ndjson"
+		}, {
+			id: "qcChecks_" + sampleId
+		})
+
+		// Add sampleId column
+		qcDf = qcDf.withColumns(pt.lit(sampleId).alias("sampleId"))
+		qcChecksFrames = append(qcChecksFrames, qcDf)
+	}
+
+	// Merge per-sample pipeline funnel data
+	pipelineFunnelData := inputs.pipelineFunnelData
+	funnelMap := pipelineFunnelData.inputs()
+	funnelFrames := []
+	for sKey in maps.getKeys(funnelMap) {
+		funnelFile := funnelMap[sKey]
+		key := json.decode(sKey)
+		sampleId := key[0]
+
+		funnelDf := wf.frame({
+			file: funnelFile,
+			xsvType: "ndjson"
+		}, {
+			id: "funnel_" + sampleId
+		})
+
+		funnelDf = funnelDf.withColumns(pt.lit(sampleId).alias("sampleId"))
+		funnelFrames = append(funnelFrames, funnelDf)
+	}
+
+	allSeq := undefined
+	if len(seqFrames) == 1 {
+		allSeq = seqFrames[0]
+	} else {
+		allSeq = pt.concat(seqFrames)
+	}
+
+	// Sort all outputs by sampleId for deterministic file content (stable CIDs across re-runs)
+	allQc.sort(["sampleId"]).save("qc.tsv")
+	allComp.sort(["sampleId"]).save("aa-composition.ndjson")
+	allSeq.sort(["sampleId"]).save("aa-sequences.ndjson")
+
+	allCheckFrames := qcChecksFrames + propertyCheckFrames
+	if len(allCheckFrames) > 0 {
+		allQcChecks := undefined
+		if len(allCheckFrames) == 1 {
+			allQcChecks = allCheckFrames[0]
+		} else {
+			allQcChecks = pt.concat(allCheckFrames)
+		}
+		// Each check row carries its own sortOrder so the display order is
+		// defined next to the check definition (see _check() in qc_checks.py
+		// and the property checks above), not in a central mapping.
+		allQcChecks.sort(["sampleId", "sortOrder"]).save("qc-checks.ndjson")
+	}
+
+	if len(funnelFrames) > 0 {
+		allFunnel := undefined
+		if len(funnelFrames) == 1 {
+			allFunnel = funnelFrames[0]
+		} else {
+			allFunnel = pt.concat(funnelFrames)
+		}
+		allFunnel.sort(["sampleId"]).save("pipeline-funnel.ndjson")
+	}
+
+	// Merge per-sample distribution data
+	distData := inputs.distributionsData
+	distMap := distData.inputs()
+	distFrames := []
+	for sKey in maps.getKeys(distMap) {
+		distFile := distMap[sKey]
+		key := json.decode(sKey)
+		sampleId := key[0]
+
+		distDf := wf.frame({
+			file: distFile,
+			xsvType: "ndjson"
+		}, {
+			id: "dist_" + sampleId
+		})
+
+		distDf = distDf.withColumns(pt.lit(sampleId).alias("sampleId"))
+		distFrames = append(distFrames, distDf)
+	}
+
+	allDistFrames := distFrames + pepLenFrames
+	if len(allDistFrames) > 0 {
+		allDist := undefined
+		if len(allDistFrames) == 1 {
+			allDist = allDistFrames[0]
+		} else {
+			allDist = pt.concat(allDistFrames)
+		}
+		allDist.sort(["sampleId", "dist"]).save("distributions.ndjson")
+	}
+
+	result := wf.run()
+
+	return {
+		qcTable: result.getFile("qc.tsv"),
+		aaComposition: result.getFile("aa-composition.ndjson"),
+		aaSequences: result.getFile("aa-sequences.ndjson"),
+		qcChecks: result.getFile("qc-checks.ndjson"),
+		pipelineFunnel: result.getFile("pipeline-funnel.ndjson"),
+		distributions: result.getFile("distributions.ndjson")
+	}
+})

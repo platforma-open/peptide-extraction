@@ -1,0 +1,66 @@
+// Per-sample mitool parse subtemplate.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+
+json := import("json")
+
+self.defineOutputs("parsedMic", "parseReport", "parseLogStream")
+
+mitoolSw := assets.importSoftware("@platforma-open/milaboratories.software-mitool:main")
+
+progressPrefix := "[==PROGRESS==]"
+
+self.body(func(inputs) {
+	pattern := inputs.pattern
+	errorBudget := inputs.errorBudget
+	mitoolCPUs := inputs.mitoolCPUs
+	mitoolMemGB := inputs.mitoolMemGB
+	inputArg := inputs.inputArg
+	inputFiles := inputs.inputFiles
+	unstranded := inputs.unstranded
+
+	mitoolMem := string(mitoolMemGB) + "GiB"
+
+	parseCmd := exec.builder().
+		writeFile("parsed.mic", bytes(0)).
+		writeFile("parse_report.txt", "").
+		printErrStreamToStdout().
+		saveStdoutStream().
+		env("MI_PROGRESS_PREFIX", progressPrefix).
+		software(mitoolSw).
+		cpu(mitoolCPUs).
+		mem(mitoolMem).
+		arg("parse").
+		arg("--pattern").arg(pattern).
+		arg("--max-error-budget").arg(string(errorBudget)).
+		arg("--threads").argWithVar("{system.cpu}").
+		arg(inputArg)
+
+	if unstranded {
+		parseCmd = parseCmd.arg("--unstranded")
+	}
+
+	// ResourceMap keys are JSON-encoded [filename] arrays — decode to recover
+	// the mitool-expected filename (e.g. "input_R1.fastq.gz").
+	filesMap := inputFiles.inputs()
+	for encKey in maps.getKeys(filesMap) {
+		key := json.decode(encKey)
+		parseCmd = parseCmd.addFile(key[0], filesMap[encKey])
+	}
+
+	parseCmd = parseCmd.
+		arg("--report").arg("parse_report.txt").
+		arg("parsed.mic").
+		saveFile("parsed.mic").
+		saveFile("parse_report.txt").
+		run()
+
+	return {
+		parsedMic: parseCmd.getFile("parsed.mic"),
+		parseReport: parseCmd.getFile("parse_report.txt"),
+		parseLogStream: parseCmd.getStdoutStream()
+	}
+})

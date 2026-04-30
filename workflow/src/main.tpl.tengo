@@ -1,0 +1,485 @@
+// Peptide extraction block — main workflow template
+//
+// Orchestrates:
+// 1. Per-sample mitool pipeline + collapse (processColumn -> mitool-pipeline.tpl.tengo)
+// 2. Cross-sample aggregation + Biopython (processColumn -> aggregate-peptides.tpl.tengo)
+
+wf := import("@platforma-sdk/workflow-tengo:workflow")
+render := import("@platforma-sdk/workflow-tengo:render")
+xsv := import("@platforma-sdk/workflow-tengo:pframes.xsv")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
+file := import("@platforma-sdk/workflow-tengo:file")
+
+mitoolPipelineTpl := assets.importTemplate(":mitool-pipeline")
+aggregatePeptidesTpl := assets.importTemplate(":aggregate-peptides")
+computeQcTpl := assets.importTemplate(":compute-qc")
+filterPeptidesTpl := assets.importTemplate(":filter-peptides")
+columnSpecs := import(":column-specs")
+
+wf.prepare(func(args) {
+	return {
+		resolvedInput: wf.resolve(args.input)
+	}
+})
+
+// --- Resource allocation defaults ---
+// All in one place for easy tuning. User overrides via perProcessMemGB/perProcessCPUs.
+
+defaultMitoolMemGB := 32      // per-sample mitool steps (parse, refine, sort, consensus, tag-stat)
+defaultMitoolCPUs := 8
+defaultCollapseMemGB := 4     // per-sample ptabler collapse (groupby on tag-stat)
+defaultCollapseCPUs := 1
+defaultAggMinMemGB := 8       // ptabler aggregation (minimum, scales with sample count)
+defaultAggMinCPUs := 4        // ptabler aggregation (minimum, scales with sample count)
+defaultXsvMemGB := 16         // Xsv import (parquet conversion)
+defaultXsvCPUs := 2
+
+wf.body(func(args) {
+	blockId := wf.blockId().getDataAsJson()
+
+	traceLabel := args.customBlockLabel
+	if traceLabel == "" {
+		traceLabel = args.defaultBlockLabel
+	}
+	if traceLabel == "" {
+		traceLabel = "Peptide Profiling"
+	}
+
+	inputSpec := args.resolvedInput.spec
+	inputData := args.resolvedInput.data
+
+	// "fastq" or "fastq.gz"
+	fileExtension := inputSpec.domain["pl7.app/fileExtension"]
+
+	variantKeyAxis := columnSpecs.variantKeyAxisSpec(blockId)
+
+	// Detect UMI presence from the parsed pattern. Drives which abundance
+	parts := args.patternParts
+	hasR1Umi := !is_undefined(parts.r1.umi) && !is_undefined(parts.r1.umiName) && parts.r1.umiName != ""
+	hasR2Umi := false
+	if !is_undefined(parts.r2) {
+		hasR2Umi = !is_undefined(parts.r2.umi) && !is_undefined(parts.r2.umiName) && parts.r2.umiName != ""
+	}
+	hasUmi := hasR1Umi || hasR2Umi
+
+	columnsPerSample := columnSpecs.columnsPerSampleFn(hasUmi)
+	columnsAggregated := columnSpecs.columnsAggregatedFn(hasUmi)
+
+	// Step 1: Per-sample mitool pipeline + collapse
+	// Outputs: peptide table TSV (Resource + Xsv) and log per sample
+
+	peptideTableFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/peptideTable",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "peptideTableFile",
+		path: ["tsv"]
+	}
+
+	peptideTableXsvOutput := {
+		type: "Xsv",
+		xsvType: "tsv",
+		settings: {
+			axes: [variantKeyAxis],
+			columns: columnsPerSample,
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		},
+		mem: string(defaultXsvMemGB) + "GiB",
+		cpu: defaultXsvCPUs,
+		name: "peptideTableXsv",
+		path: ["tsv"]
+	}
+
+	stepLogsOutput := {
+		type: "ResourceMap",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/log",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "Log",
+			axesSpec: [{
+				name: "pl7.app/peptide/step",
+				type: "String"
+			}]
+		},
+		name: "stepLogs"
+	}
+
+	qcChecksFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/qcChecksFile",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "qcChecksFile",
+		path: ["qcChecks"]
+	}
+
+	pipelineFunnelFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/pipelineFunnelFile",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "pipelineFunnelFile",
+		path: ["pipelineFunnel"]
+	}
+
+	distributionsFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/distributionsFile",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "distributionsFile",
+		path: ["distributions"]
+	}
+
+	// Parse outputs — surfaced for deduplication
+	parsedMicOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/parsedMic",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "parsedMic",
+		path: ["parsedMic"]
+	}
+
+	parseReportOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/parseReport",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "parseReport",
+		path: ["parseReport"]
+	}
+
+	consensusMicOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/consensusMic",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "consensusMic",
+		path: ["consensusMic"]
+	}
+
+	consensusReportOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/consensusReport",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "consensusReport",
+		path: ["consensusReport"]
+	}
+
+	// Flat per-sample parse log — exposed for the model's live parseProgress
+	// output and for the early sample-list signal (sampleKeys).
+	parseLogStreamOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/log",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId,
+				"pl7.app/peptide/step": "1-parse"
+			},
+			valueType: "Log"
+		},
+		name: "parseLogStream",
+		path: ["parseLogStream"]
+	}
+
+	perSampleResults := pframes.processColumn(
+		{ spec: inputSpec, data: inputData },
+		mitoolPipelineTpl,
+		[peptideTableFileOutput, peptideTableXsvOutput, stepLogsOutput, qcChecksFileOutput, pipelineFunnelFileOutput, distributionsFileOutput, parsedMicOutput, parseReportOutput, consensusMicOutput, consensusReportOutput, parseLogStreamOutput],
+		{
+			aggregate: [{
+				name: "pl7.app/sequencing/lane",
+				optional: true
+			}, {
+				name: "pl7.app/sequencing/readIndex",
+				optional: true
+			}],
+
+			// resulting aggregation axes names will be checked against supported combinations
+			// in the body template
+			passAggregationAxesNames: true,
+
+			// this will cache each individual step result for 30 minutes, even if execution of some of the steps
+			// failed or whole execution was interrupted
+			//stepCache: 30 * times.minute,
+
+			// Trace is no longer added here — applied uniformly to the
+			// exported pframe below so both filtered/unfiltered paths agree.
+
+			extra: {
+				pattern: args.effectivePattern,
+				errorBudget: args.errorBudget,
+				maxIndels: args.maxIndels,
+				minReadsPerConsensus: args.minReadsPerConsensus,
+				autoR1OnlyAssembly: args.autoR1OnlyAssembly,
+				patternParts: args.patternParts,
+				fileExtension: fileExtension,
+				unstranded: args.unstranded
+			},
+
+			// by passing those parameters as meta fields we allow for recovery and deduplication mechanisms
+			// to pick up the results from executions with different values for CPU and Memory overrides
+			metaExtra: {
+				mitoolMemGB: is_undefined(args.perProcessMemGB) ? defaultMitoolMemGB : args.perProcessMemGB,
+				mitoolCPUs: is_undefined(args.perProcessCPUs) ? defaultMitoolCPUs : args.perProcessCPUs,
+				collapseMemGB: defaultCollapseMemGB,
+				collapseCPUs: defaultCollapseCPUs
+			}
+		}
+	)
+
+	// Step 2: Cross-sample aggregation + properties
+	perPeptideXsvOutput := {
+		type: "Xsv",
+		xsvType: "tsv",
+		settings: {
+			axes: [variantKeyAxis],
+			columns: columnSpecs.columnsPerVariantFromSample + columnsAggregated,
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		},
+		mem: string(defaultXsvMemGB) + "GiB",
+		cpu: defaultXsvCPUs,
+		name: "perPeptideXsv",
+		path: ["propertiesTsv"]
+	}
+
+	// Raw properties file (for QC step)
+	// @TODO: Check if there is a way to use perPeptideXsvOutput inside QC template
+	propertiesFileOutput := {
+		type: "Resource",
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/peptide/propertiesFile",
+			domain: {
+				"pl7.app/peptide/extractionRunId": blockId
+			},
+			valueType: "File"
+		},
+		name: "propertiesFile",
+		path: ["propertiesTsv"]
+	}
+
+	aggregateResults := pframes.processColumn(
+		perSampleResults.output("peptideTableFile"),
+		aggregatePeptidesTpl,
+		[perPeptideXsvOutput, propertiesFileOutput],
+		{
+			aggregate: [{
+				name: "pl7.app/sampleId",
+				anonymize: true
+			}],
+			//stepCache: 30 * times.minute,
+			extra: {
+				hasUmi: hasUmi,
+				stopCodonTypes: args.stopCodonTypes,
+				stopCodonReplacements: args.stopCodonReplacements
+			},
+			metaExtra: {
+				aggMinMemGB: defaultAggMinMemGB,
+				aggMinCPUs: defaultAggMinCPUs
+			}
+			// Trace is no longer added here — applied uniformly to the
+			// exported pframe below so both filtered/unfiltered paths agree.
+		}
+	)
+
+	// Step 3: QC report table (joins per-sample peptide tables with per-peptide properties)
+	sampleIdAxisSpec := inputSpec.axesSpec[0]
+
+	qcRun := render.createEphemeral(computeQcTpl, {
+		peptideTablesData: perSampleResults.outputData("peptideTableFile"),
+		propertiesFile: aggregateResults.outputData("propertiesFile"),
+		qcChecksData: perSampleResults.outputData("qcChecksFile"),
+		pipelineFunnelData: perSampleResults.outputData("pipelineFunnelFile"),
+		distributionsData: perSampleResults.outputData("distributionsFile"),
+		hasUmi: hasUmi
+	})
+
+	qcTsvFile := qcRun.output("qcTable")
+	aaCompositionFile := qcRun.output("aaComposition")
+	aaSequencesFile := qcRun.output("aaSequences")
+	qcChecksFile := qcRun.output("qcChecks")
+	pipelineFunnelFile := qcRun.output("pipelineFunnel")
+	distributionsFile := qcRun.output("distributions")
+
+	qcColumns := xsv.importFile(
+		qcTsvFile,
+		"tsv",
+		{
+			axes: [{
+				column: "sampleId",
+				spec: sampleIdAxisSpec
+			}],
+			columns: columnSpecs.columnsQcFn(args.filterInvalidPeptides, hasUmi),
+			storageFormat: "Parquet",
+			partitionKeyLength: 0
+		},
+		{
+			splitDataAndSpec: true,
+			cpu: 1,
+			mem: string(defaultXsvMemGB) + "GiB"
+		}
+	)
+
+	qcPfBuilder := pframes.pFrameBuilder()
+	for k, v in qcColumns {
+		qcPfBuilder.add(k, v.spec, v.data)
+	}
+	qcPf := qcPfBuilder.build()
+
+	// Build pFrame from per-sample Xsv + aggregated Xsv (composition excluded — for future plots only).
+	// When filterInvalidPeptides is enabled, rebuild both Xsvs from filtered TSVs produced by
+	// filter-peptides.tpl.tengo. The filter template is a sibling consumer of propertiesFile
+	// (runs in parallel with compute-qc), so compute-qc still sees unfiltered data and
+	// "Peptides Dropped" counts in the QC table stay accurate.
+	trace := pSpec.makeTrace(inputSpec, {
+		type: "milaboratories.peptide-profiling",
+		id: blockId,
+		importance: 20,
+		label: traceLabel
+	})
+
+	peptidesPfBuilder := pframes.pFrameBuilder()
+	if args.filterInvalidPeptides {
+		filterRun := render.createEphemeral(filterPeptidesTpl, {
+			peptideTablesData: perSampleResults.outputData("peptideTableFile"),
+			propertiesFile: aggregateResults.outputData("propertiesFile"),
+			hasUmi: hasUmi
+		})
+
+		filteredPerSampleXsv := xsv.importFile(
+			filterRun.output("filteredPerSampleTsv"),
+			"tsv",
+			{
+				axes: [
+					{ column: "sampleId", spec: sampleIdAxisSpec },
+					variantKeyAxis
+				],
+				columns: columnsPerSample,
+				storageFormat: "Parquet",
+				partitionKeyLength: 1
+			},
+			{
+				splitDataAndSpec: true,
+				cpu: defaultXsvCPUs,
+				mem: string(defaultXsvMemGB) + "GiB"
+			}
+		)
+		for k, v in filteredPerSampleXsv {
+			peptidesPfBuilder.add("perSample/" + k, trace.inject(v.spec), v.data)
+		}
+
+		filteredPerPeptideXsv := xsv.importFile(
+			filterRun.output("filteredPerPeptideTsv"),
+			"tsv",
+			{
+				axes: [variantKeyAxis],
+				columns: columnSpecs.columnsPerVariantFromSample + columnsAggregated,
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			},
+			{
+				splitDataAndSpec: true,
+				cpu: defaultXsvCPUs,
+				mem: string(defaultXsvMemGB) + "GiB"
+			}
+		)
+		for k, v in filteredPerPeptideXsv {
+			peptidesPfBuilder.add("perPeptide/" + k, trace.inject(v.spec), v.data)
+		}
+	} else {
+		for columnName in perSampleResults.listXsvColumns("peptideTableXsv") {
+			peptidesPfBuilder.add(
+				"perSample/" + columnName,
+				trace.inject(perSampleResults.outputSpec("peptideTableXsv", columnName)),
+				perSampleResults.outputData("peptideTableXsv", columnName)
+			)
+		}
+		for columnName in aggregateResults.listXsvColumns("perPeptideXsv") {
+			peptidesPfBuilder.add(
+				"perPeptide/" + columnName,
+				trace.inject(aggregateResults.outputSpec("perPeptideXsv", columnName)),
+				aggregateResults.outputData("perPeptideXsv", columnName)
+			)
+		}
+	}
+	peptidesPf := peptidesPfBuilder.build()
+
+	outputs := {
+		peptides: pframes.exportFrame(peptidesPf),
+		qcReportTable: pframes.exportFrame(qcPf),
+		stepLogs: perSampleResults.outputData("stepLogs"),
+		aaComposition: file.exportFile(aaCompositionFile),
+		aaSequences: file.exportFile(aaSequencesFile),
+		qcChecks: file.exportFile(qcChecksFile),
+		pipelineFunnel: file.exportFile(pipelineFunnelFile),
+		distributions: file.exportFile(distributionsFile),
+		// Kept reachable so parse outputs are persisted by content hash (dedup).
+		parsedMic: perSampleResults.outputData("parsedMic"),
+		parseReport: perSampleResults.outputData("parseReport"),
+		consensusMic: perSampleResults.outputData("consensusMic"),
+		consensusReport: perSampleResults.outputData("consensusReport"),
+		parseLogStream: perSampleResults.outputData("parseLogStream")
+	}
+
+	exports := {
+		peptides: peptidesPf
+	}
+
+	return {
+		outputs: outputs,
+		exports: exports
+	}
+})
