@@ -20,6 +20,7 @@ self.body(func(inputs) {
 	mitoolMemGB := inputs.mitoolMemGB
 	inputArg := inputs.inputArg
 	inputFiles := inputs.inputFiles
+	unstranded := inputs.unstranded
 
 	mitoolMem := string(mitoolMemGB) + "GiB"
 
@@ -37,6 +38,10 @@ self.body(func(inputs) {
 		arg("--max-error-budget").arg(string(errorBudget)).
 		arg("--threads").argWithVar("{system.cpu}").
 		arg(inputArg)
+
+	if unstranded {
+		parseCmd = parseCmd.arg("--unstranded")
+	}
 
 	// ResourceMap keys are JSON-encoded [filename] arrays — decode to recover
 	// the mitool-expected filename (e.g. "input_R1.fastq.gz").
