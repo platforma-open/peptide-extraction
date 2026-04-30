@@ -4,12 +4,12 @@
 // 1. Peptide Sequence Lengths (R1/R2 parsed + consensus, two-column)
 // 2. UMI Lengths (side by side, only if present)
 
-import { computed, ref } from "vue";
-import { PlAccordionSection, PlBtnGroup } from "@platforma-sdk/ui-vue";
 import type { SimpleOption } from "@platforma-sdk/ui-vue";
-import type { SampleDistributions, DistBin } from "../distributions";
-import { buildDistLabels } from "../distributions";
+import { PlAccordionSection, PlBtnGroup } from "@platforma-sdk/ui-vue";
+import { computed, ref } from "vue";
 import { useApp } from "../app";
+import type { DistBin, SampleDistributions } from "../distributions";
+import { buildDistLabels } from "../distributions";
 
 type LengthUnit = "aa" | "nt";
 const lengthUnit = ref<LengthUnit>("aa");
@@ -111,10 +111,10 @@ const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
       <div v-else class="dist-no-data">No data available</div>
     </div>
 
-    <!-- Advanced results: Peptide Sequence Lengths + UMI Lengths -->
+    <!-- Advanced results: Peptide Insert Lengths + UMI Lengths -->
     <PlAccordionSection v-if="hasSequenceLengths || hasUmiLengths" label="Advanced results">
       <div v-if="hasSequenceLengths" class="dist-section">
-        <div class="dist-section-title">Peptide Sequence Lengths</div>
+        <div class="dist-section-title">Peptide Insert Lengths</div>
         <div class="dist-section-desc">
           Peptide insert length before and after the pipeline builds one consensus sequence per
           molecule. Shifts between the two reveal read truncation or quality filtering.
