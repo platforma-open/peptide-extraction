@@ -1,12 +1,8 @@
 <script setup lang="ts">
-import {
-  SeqLogo,
-  alignSequences,
-  getResidueCounts,
-} from "@milaboratories/multi-sequence-alignment";
-import type { ResidueCounts } from "@milaboratories/multi-sequence-alignment";
+import { SeqLogo, getResidueCounts } from "@milaboratories/multi-sequence-alignment";
 import type { ICellRendererParams } from "ag-grid-enterprise";
-import { onBeforeUnmount, onMounted, ref, shallowRef, toRaw, useTemplateRef, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, toRaw, useTemplateRef } from "vue";
+import { informationWeightedCounts } from "../seqLogoWeights";
 
 const props = defineProps<{
   params: ICellRendererParams<unknown, string[] | undefined>;
@@ -14,9 +10,17 @@ const props = defineProps<{
 
 const containerEl = useTemplateRef<HTMLDivElement>("containerEl");
 const containerWidth = ref(0);
-const residueCounts = shallowRef<ResidueCounts | undefined>(undefined);
 
-let abortController: AbortController | undefined;
+// Every peptide in the dominant-length bucket is the same length by
+// construction, so we can skip MSA and count residues directly. The counts
+// are then re-weighted by per-position information content so conserved
+// positions stand tall and variable positions collapse — much more readable
+// at the cell's tight 32px height than a flat count-stacked logo.
+const residueCounts = computed(() => {
+  const seqs = props.params.value;
+  if (!seqs || seqs.length === 0) return undefined;
+  return informationWeightedCounts(getResidueCounts(toRaw(seqs)));
+});
 
 const resizeObserver = new ResizeObserver((entries) => {
   const width = entries[0]?.contentRect.width ?? 0;
@@ -29,31 +33,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   resizeObserver.disconnect();
-  abortController?.abort();
 });
-
-watch(
-  () => props.params.value,
-  async (sequences) => {
-    abortController?.abort();
-    residueCounts.value = undefined;
-
-    console.log("[SeqLogoCell] sequences:", sequences?.length);
-    if (!sequences || sequences.length === 0) return;
-
-    abortController = new AbortController();
-    const { signal } = abortController;
-    try {
-      const aligned = await alignSequences(toRaw(sequences), undefined, signal);
-      if (!signal.aborted) {
-        residueCounts.value = getResidueCounts(aligned);
-      }
-    } catch (e) {
-      console.error("[SeqLogoCell] alignment error:", e);
-    }
-  },
-  { immediate: true },
-);
 </script>
 
 <template>

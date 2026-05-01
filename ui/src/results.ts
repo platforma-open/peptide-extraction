@@ -4,13 +4,14 @@ import { computed } from "vue";
 import type { SampleComposition } from "./aaComposition";
 import { parseCompositionNdjson } from "./aaComposition";
 import { useApp } from "./app";
-import { parseSeqListsNdjson } from "./seqLists";
 import type { SampleDistributions } from "./distributions";
 import { parseDistributionsNdjson } from "./distributions";
 import type { FunnelEntry } from "./pipelineFunnel";
 import { parseFunnelNdjson } from "./pipelineFunnel";
 import type { QcCheckResult } from "./qcChecks";
 import { parseQcChecksNdjson } from "./qcChecks";
+import type { LengthBuckets } from "./seqLists";
+import { MIN_PEPTIDES_PER_LENGTH, parseSeqListsNdjson } from "./seqLists";
 
 const reactiveFileContent = ReactiveFileContent.useGlobal();
 
@@ -19,18 +20,38 @@ export type SampleResult = {
   label: string;
   progress: string;
   aaComposition?: SampleComposition;
+  /** Sequences at the dominant peptide length. */
   sequences?: string[];
+  /** All length buckets for this sample. */
+  seqsByLength?: LengthBuckets;
+  /** Most-abundant peptide length. */
+  dominantLength?: number;
   qcChecks?: QcCheckResult[];
   pipelineFunnel?: FunnelEntry[];
   distributions?: SampleDistributions;
 };
 
-const seqListsMap = computed<Map<string, string[]> | undefined>(() => {
+const seqListsMap = computed<Map<string, LengthBuckets> | undefined>(() => {
   const app = useApp();
   const blob = app.model.outputs.aaSequences;
   const content = blob ? reactiveFileContent.getContentString(blob.handle)?.value : undefined;
   return content ? parseSeqListsNdjson(content) : undefined;
 });
+
+/** Pick the most-populated AA length bin from a sample's length distribution.
+ *  Uses the unfiltered aa_length distribution rather than seqsByLength so the
+ *  result is correct even when multiple lengths each saturate the 3000 cap. */
+function computeDominantLength(dist: SampleDistributions | undefined): number | undefined {
+  const aaLen = dist?.aa_length;
+  if (!aaLen?.length) return undefined;
+  let best: { len: number; count: number } | undefined;
+  for (const bin of aaLen) {
+    const len = parseInt(bin.bin, 10);
+    if (Number.isNaN(len)) continue;
+    if (!best || bin.count > best.count) best = { len, count: bin.count };
+  }
+  return best?.len;
+}
 
 /** Per-sample AA composition, parsed once and cached until the file changes */
 const compositionMap = computed<Map<string, SampleComposition> | undefined>(() => {
@@ -183,15 +204,50 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
         }
       }
 
+      // Drop buckets below the seq-logo threshold so the cell, the dropdown,
+      // and the chart all only ever see lengths with enough peptides for a
+      // meaningful MSA.
+      const rawByLength = seqListsMap.value?.get(sampleId);
+      let seqsByLength: LengthBuckets | undefined;
+      if (rawByLength) {
+        const filtered: LengthBuckets = new Map();
+        for (const [len, list] of rawByLength) {
+          if (list.length >= MIN_PEPTIDES_PER_LENGTH) filtered.set(len, list);
+        }
+        if (filtered.size > 0) seqsByLength = filtered;
+      }
+
+      const distributions = distributionsMap.value?.get(sampleId);
+      // Prefer the distribution-derived dominant length. Fall back to the
+      // largest seqsByLength bucket so the cell still renders for samples
+      // where distributions haven't loaded yet.
+      let dominantLength = computeDominantLength(distributions);
+      if (dominantLength === undefined && seqsByLength) {
+        let bestSize = 0;
+        for (const [len, list] of seqsByLength) {
+          if (list.length > bestSize) {
+            bestSize = list.length;
+            dominantLength = len;
+          }
+        }
+      }
+      // Cell only renders if the dominant length itself clears the threshold;
+      // staying honest about "the dominant length doesn't have enough data" is
+      // better than silently switching to a non-dominant bucket.
+      const sequences =
+        dominantLength !== undefined ? seqsByLength?.get(dominantLength) : undefined;
+
       return {
         sampleId,
         label: sampleLabels?.[sampleId] ?? sampleId,
         progress: progressStr,
         aaComposition: compositionMap.value?.get(sampleId),
-        sequences: seqListsMap.value?.get(sampleId),
+        sequences,
+        seqsByLength,
+        dominantLength,
         qcChecks: qcChecksMap.value?.get(sampleId),
         pipelineFunnel: funnelMap.value?.get(sampleId),
-        distributions: distributionsMap.value?.get(sampleId),
+        distributions,
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));

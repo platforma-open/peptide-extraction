@@ -71,7 +71,10 @@ const currentSample = computed(() => {
 
   <template v-if="currentTab === 'visualReport'">
     <PipelineFunnelChart :funnel="currentSample?.pipelineFunnel" />
-    <SeqLogoChart :sequences="currentSample?.sequences" />
+    <SeqLogoChart
+      :seqs-by-length="currentSample?.seqsByLength"
+      :dominant-length="currentSample?.dominantLength"
+    />
     <AaCompositionChart :composition="currentSample?.aaComposition" />
   </template>
 

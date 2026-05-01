@@ -344,7 +344,8 @@ wf.body(func(args) {
 		qcChecksData: perSampleResults.outputData("qcChecksFile"),
 		pipelineFunnelData: perSampleResults.outputData("pipelineFunnelFile"),
 		distributionsData: perSampleResults.outputData("distributionsFile"),
-		hasUmi: hasUmi
+		hasUmi: hasUmi,
+		filterInvalidPeptides: args.filterInvalidPeptides
 	})
 
 	qcTsvFile := qcRun.output("qcTable")
