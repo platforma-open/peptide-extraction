@@ -26,6 +26,11 @@ self.body(func(inputs) {
 	peptideTablesData := inputs.peptideTablesData
 	propertiesFileData := inputs.propertiesFile
 	hasUmi := inputs.hasUmi
+	filterInvalid := inputs.filterInvalidPeptides
+
+	// Reusable predicate for "valid peptide" — neither trailing nucleotides
+	// nor an early stop codon. Applied to the seq logo, AA composition
+	validPeptideFilter := pt.col("hasTrailingNucleotides").not().and(pt.col("hasEarlyStopCodon").not())
 
 	// propertiesFile comes from a fully-aggregated processColumn — it's a ResourceMap
 	// with a single entry keyed by []. Extract the actual file.
@@ -198,6 +203,9 @@ self.body(func(inputs) {
 		// Per-sample AA composition: weighted by abundance
 		// Formula: comp_AA = sum(countOf(AA) * abundance) / sum(seqLen * abundance) * 100
 		joinedForComp := joined.filter(pt.col("aaSeqPeptide").strLenChars().gt(0))
+		if filterInvalid {
+			joinedForComp = joinedForComp.filter(validPeptideFilter)
+		}
 
 		// First pass: aggregate raw weighted counts + total weighted length.
 		// Weight by abundance (UMI count if present, otherwise read count).
@@ -229,18 +237,31 @@ self.body(func(inputs) {
 		compFrames = append(compFrames, compRow)
 
 		// Per-sample sequence list for seq-logo rendering (UI-side alignment).
-		// No filter here: joined always has rows (left join from sampleDf).
-		// UI parser skips null/empty aaSeqPeptide entries.
-		seqSelectExprs := [
-			pt.lit(sampleId).alias("sampleId"),
-			pt.col("aaSeqPeptide")
-		]
-		seqDf := joined.select(seqSelectExprs...).limit(3000)
+		// Bucketed by AA length so the UI can render a length-specific MSA
+		seqBase := joined.filter(pt.col("aaSeqPeptide").strLenChars().gt(0))
+		if filterInvalid {
+			seqBase = seqBase.filter(validPeptideFilter)
+		}
+		seqDf := seqBase.
+			withColumns(
+				pt.rank([pt.col(abundanceCol), pt.col("variantKey")], { descending: true }).
+					over(pt.col("aaLengthPeptide")).
+					alias("_seqRank")
+			).filter(
+				pt.col("_seqRank").le(pt.lit(3000))
+			).select(
+				pt.lit(sampleId).alias("sampleId"),
+				pt.col("aaLengthPeptide").alias("aaLength"),
+				pt.col("aaSeqPeptide")
+			)
 		seqFrames = append(seqFrames, seqDf)
 
 		// Per-sample peptide length distributions (AA and NT).
 		// Filter to rows with a valid peptide, then group by length and count.
 		validPeptides := joined.filter(pt.col("aaLengthPeptide").gt(0))
+		if filterInvalid {
+			validPeptides = validPeptides.filter(validPeptideFilter)
+		}
 
 		for lenCol in ["aaLengthPeptide", "ntLengthPeptide"] {
 			distName := "aa_length"
@@ -333,7 +354,7 @@ self.body(func(inputs) {
 	// Sort all outputs by sampleId for deterministic file content (stable CIDs across re-runs)
 	allQc.sort(["sampleId"]).save("qc.tsv")
 	allComp.sort(["sampleId"]).save("aa-composition.ndjson")
-	allSeq.sort(["sampleId"]).save("aa-sequences.ndjson")
+	allSeq.sort(["sampleId", "aaLength"]).save("aa-sequences.ndjson")
 
 	allCheckFrames := qcChecksFrames + propertyCheckFrames
 	if len(allCheckFrames) > 0 {

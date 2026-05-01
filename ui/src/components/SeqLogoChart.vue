@@ -1,59 +1,81 @@
 <script setup lang="ts">
-import {
-  SeqLogo,
-  alignSequences,
-  getResidueCounts,
-} from "@milaboratories/multi-sequence-alignment";
-import type { ResidueCounts } from "@milaboratories/multi-sequence-alignment";
-import { computed, onBeforeUnmount, shallowRef, toRaw, watch } from "vue";
+import { SeqLogo, getResidueCounts } from "@milaboratories/multi-sequence-alignment";
+import type { ListOption } from "@platforma-sdk/ui-vue";
+import { PlDropdown } from "@platforma-sdk/ui-vue";
+import { computed, ref, toRaw, watch } from "vue";
+import type { LengthBuckets } from "../seqLists";
 
 const props = defineProps<{
-  sequences: string[] | undefined;
+  seqsByLength: LengthBuckets | undefined;
+  dominantLength: number | undefined;
 }>();
 
 const LOGO_WIDTH = 672;
 const LETTER_WIDTH = 30;
 
-const residueCounts = shallowRef<ResidueCounts | undefined>(undefined);
+// Length options sorted by bucket size (most populated first), labelled with
+// the count so users can see how much support each length has.
+const lengthOptions = computed<ListOption<number>[]>(() => {
+  if (!props.seqsByLength || props.seqsByLength.size === 0) return [];
+  return [...props.seqsByLength.entries()]
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([len, list]) => ({
+      value: len,
+      label: `${len} aa (${list.length.toLocaleString()})`,
+    }));
+});
+
+const selectedLength = ref<number | undefined>(undefined);
+
+// Default to the dominant length whenever the sample (or its dominant length)
+// changes; users expect each sample to open on its dominant bucket.
+watch(
+  () => props.dominantLength,
+  (domLen) => {
+    selectedLength.value = domLen;
+  },
+  { immediate: true },
+);
+
+// If the current selection disappears (data reload), fall back to dominant.
+watch(lengthOptions, (opts) => {
+  if (selectedLength.value === undefined) return;
+  if (!opts.some((o) => o.value === selectedLength.value)) {
+    selectedLength.value = props.dominantLength;
+  }
+});
+
+const sequences = computed<string[] | undefined>(() => {
+  const len = selectedLength.value;
+  if (len === undefined) return undefined;
+  return props.seqsByLength?.get(len);
+});
+
+// Every peptide in a length bucket is exactly that length by construction
+// (aaLengthPeptide = aaSeqPeptide.strLenChars()), so MSA is unnecessary —
+// getResidueCounts can count residues position-by-position directly.
+const residueCounts = computed(() =>
+  sequences.value && sequences.value.length > 0
+    ? getResidueCounts(toRaw(sequences.value))
+    : undefined,
+);
 
 const logoWidth = computed(() =>
   residueCounts.value
     ? Math.min(LOGO_WIDTH, LETTER_WIDTH * residueCounts.value.length)
     : LOGO_WIDTH,
 );
-
-let abortController: AbortController | undefined;
-
-onBeforeUnmount(() => {
-  abortController?.abort();
-});
-
-watch(
-  () => props.sequences,
-  async (sequences) => {
-    abortController?.abort();
-    residueCounts.value = undefined;
-
-    if (!sequences || sequences.length === 0) return;
-
-    abortController = new AbortController();
-    const { signal } = abortController;
-    try {
-      const aligned = await alignSequences(toRaw(sequences), undefined, signal);
-      if (!signal.aborted) {
-        residueCounts.value = getResidueCounts(aligned);
-      }
-    } catch (e) {
-      console.error("[SeqLogoChart] alignment error:", e);
-    }
-  },
-  { immediate: true },
-);
 </script>
 
 <template>
-  <div v-if="sequences?.length" class="seq-logo-chart">
+  <div v-if="lengthOptions.length > 0" class="seq-logo-chart">
     <div class="chart-title">Sequence Logo</div>
+    <PlDropdown
+      v-if="lengthOptions.length > 1"
+      v-model="selectedLength"
+      label="Peptide length"
+      :options="lengthOptions"
+    />
     <div class="logo-area">
       <SeqLogo
         v-if="residueCounts !== undefined"
