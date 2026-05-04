@@ -17,6 +17,7 @@ mitoolPipelineTpl := assets.importTemplate(":mitool-pipeline")
 aggregatePeptidesTpl := assets.importTemplate(":aggregate-peptides")
 computeQcTpl := assets.importTemplate(":compute-qc")
 filterPeptidesTpl := assets.importTemplate(":filter-peptides")
+seqLogoParamsTpl := assets.importTemplate(":seq-logo-params")
 columnSpecs := import(":column-specs")
 
 wf.prepare(func(args) {
@@ -338,6 +339,10 @@ wf.body(func(args) {
 	// Step 3: QC report table (joins per-sample peptide tables with per-peptide properties)
 	sampleIdAxisSpec := inputSpec.axesSpec[0]
 
+	seqLogoParamsRun := render.createEphemeral(seqLogoParamsTpl, {
+		propertiesFile: aggregateResults.outputData("propertiesFile")
+	})
+
 	qcRun := render.createEphemeral(computeQcTpl, {
 		peptideTablesData: perSampleResults.outputData("peptideTableFile"),
 		propertiesFile: aggregateResults.outputData("propertiesFile"),
@@ -345,7 +350,8 @@ wf.body(func(args) {
 		pipelineFunnelData: perSampleResults.outputData("pipelineFunnelFile"),
 		distributionsData: perSampleResults.outputData("distributionsFile"),
 		hasUmi: hasUmi,
-		filterInvalidPeptides: args.filterInvalidPeptides
+		filterInvalidPeptides: args.filterInvalidPeptides,
+		maxPeptideLength: seqLogoParamsRun.output("maxPeptideLength")
 	})
 
 	qcTsvFile := qcRun.output("qcTable")

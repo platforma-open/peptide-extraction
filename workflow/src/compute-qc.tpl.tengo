@@ -18,6 +18,7 @@ self.awaitState("peptideTablesData", "ResourceReady")
 self.awaitState("qcChecksData", "ResourceReady")
 self.awaitState("pipelineFunnelData", "ResourceReady")
 self.awaitState("distributionsData", "ResourceReady")
+self.awaitState("maxPeptideLength", "ResourceReady")
 
 aminoAcids := ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L",
 	"M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
@@ -27,6 +28,7 @@ self.body(func(inputs) {
 	propertiesFileData := inputs.propertiesFile
 	hasUmi := inputs.hasUmi
 	filterInvalid := inputs.filterInvalidPeptides
+	maxLogoPositions := inputs.maxPeptideLength.getDataAsJson().maxLen
 
 	// Reusable predicate for "valid peptide" — neither trailing nucleotides
 	// nor an early stop codon. Applied to the seq logo, AA composition
@@ -240,10 +242,6 @@ self.body(func(inputs) {
 		// Unweighted — each unique peptide counts once.
 		// Buckets with fewer than MIN_LOGO_PEPTIDES unique peptides are excluded.
 		MIN_LOGO_PEPTIDES := 10
-		// Upper bound on peptide length for seq-logo rendering. Positions beyond
-		// a sequence's actual aaLength are skipped by the filter inside the loop,
-		// so raising this has negligible runtime cost — only plan-building grows.
-		MAX_LOGO_POSITIONS := 100
 		seqBase := joined.filter(pt.col("aaSeqPeptide").strLenChars().gt(0))
 		if filterInvalid {
 			seqBase = seqBase.filter(validPeptideFilter)
@@ -257,7 +255,7 @@ self.body(func(inputs) {
 		)
 		posFrames := []
 		i := 0
-		for i < MAX_LOGO_POSITIONS {
+		for i < maxLogoPositions {
 			posFrame := seqBase.
 				filter(pt.col("aaLengthPeptide").gt(pt.lit(i))).
 				withColumns(

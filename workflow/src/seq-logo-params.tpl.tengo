@@ -1,0 +1,43 @@
+// Computes parameters needed for seq-logo rendering in compute-qc.
+// Currently: maximum aaLengthPeptide across all peptides, used as the
+// loop bound for the per-position residue-count calculation.
+//
+// Runs after aggregate-peptides (needs propertiesFile) and its output
+// is passed to compute-qc so compute-qc can use the exact max length
+// instead of a hardcoded upper bound.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+units := import("@platforma-sdk/workflow-tengo:units")
+
+self.awaitState("InputsLocked")
+self.awaitState("propertiesFile", "ResourceReady")
+
+self.body(func(inputs) {
+	propertiesFileData := inputs.propertiesFile
+	propertiesFileMap := propertiesFileData.inputs()
+	propertiesFile := propertiesFileMap["[]"]
+
+	wf := pt.workflow().mem(1 * units.GiB).cpu(1)
+
+	propsDf := wf.frame({
+		file: propertiesFile,
+		xsvType: "tsv",
+		schema: [
+			{ column: "aaLengthPeptide", type: "Int" }
+		]
+	}, {
+		id: "props",
+		inferSchema: false
+	})
+
+	propsDf.
+		select(pt.col("aaLengthPeptide").max().alias("maxLen")).
+		saveContent("params.ndjson")
+
+	result := wf.run()
+
+	return {
+		maxPeptideLength: result.getFileContent("params.ndjson")
+	}
+})
