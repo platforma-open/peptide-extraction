@@ -68,24 +68,27 @@ const logoWidth = computed(() =>
 </script>
 
 <template>
-  <div v-if="lengthOptions.length > 0" class="seq-logo-chart">
+  <div class="seq-logo-chart">
     <div class="chart-title">Sequence Logo</div>
-    <PlDropdown
-      v-if="lengthOptions.length > 1"
-      v-model="selectedLength"
-      label="Peptide length"
-      :options="lengthOptions"
-    />
-    <div class="logo-area">
-      <SeqLogo
-        v-if="residueCounts !== undefined"
-        :residueCounts="residueCounts"
-        :width="logoWidth"
-        :height="160"
+    <template v-if="lengthOptions.length > 0">
+      <PlDropdown
+        v-if="lengthOptions.length > 1"
+        v-model="selectedLength"
+        label="Peptide length"
+        :options="lengthOptions"
+        class="peptide-length-dropdown"
       />
-    </div>
+      <div class="logo-area">
+        <SeqLogo
+          v-if="residueCounts !== undefined"
+          :residueCounts="residueCounts"
+          :width="logoWidth"
+          :height="160"
+        />
+      </div>
+    </template>
+    <div v-else class="no-data">No sequence data available</div>
   </div>
-  <div v-else class="no-data">No sequence data available</div>
 </template>
 
 <style scoped>
@@ -102,6 +105,10 @@ const logoWidth = computed(() =>
   font-size: 20px;
   font-weight: 500;
   line-height: 24px;
+}
+
+.peptide-length-dropdown {
+  width: 200px;
 }
 
 .logo-area {
