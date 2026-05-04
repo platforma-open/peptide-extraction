@@ -10,8 +10,8 @@ import type { FunnelEntry } from "./pipelineFunnel";
 import { parseFunnelNdjson } from "./pipelineFunnel";
 import type { QcCheckResult } from "./qcChecks";
 import { parseQcChecksNdjson } from "./qcChecks";
-import type { LengthBuckets } from "./seqLists";
-import { MIN_PEPTIDES_PER_LENGTH, parseSeqListsNdjson } from "./seqLists";
+import type { SeqLogoByLength } from "./seqLogo";
+import { parseSeqLogoNdjson } from "./seqLogo";
 
 const reactiveFileContent = ReactiveFileContent.useGlobal();
 
@@ -20,27 +20,23 @@ export type SampleResult = {
   label: string;
   progress: string;
   aaComposition?: SampleComposition;
-  /** Sequences at the dominant peptide length. */
-  sequences?: string[];
-  /** All length buckets for this sample. */
-  seqsByLength?: LengthBuckets;
-  /** Most-abundant peptide length. */
+  /** Pre-computed seq-logo residue counts keyed by AA length. */
+  seqLogoByLength?: SeqLogoByLength;
+  /** Most-abundant peptide length (from aa_length distribution). */
   dominantLength?: number;
   qcChecks?: QcCheckResult[];
   pipelineFunnel?: FunnelEntry[];
   distributions?: SampleDistributions;
 };
 
-const seqListsMap = computed<Map<string, LengthBuckets> | undefined>(() => {
+const seqLogoMap = computed<Map<string, SeqLogoByLength> | undefined>(() => {
   const app = useApp();
-  const blob = app.model.outputs.aaSequences;
+  const blob = app.model.outputs.seqLogo;
   const content = blob ? reactiveFileContent.getContentString(blob.handle)?.value : undefined;
-  return content ? parseSeqListsNdjson(content) : undefined;
+  return content ? parseSeqLogoNdjson(content) : undefined;
 });
 
-/** Pick the most-populated AA length bin from a sample's length distribution.
- *  Uses the unfiltered aa_length distribution rather than seqsByLength so the
- *  result is correct even when multiple lengths each saturate the 3000 cap. */
+/** Pick the most-populated AA length bin from a sample's length distribution. */
 function computeDominantLength(dist: SampleDistributions | undefined): number | undefined {
   const aaLen = dist?.aa_length;
   if (!aaLen?.length) return undefined;
@@ -204,46 +200,16 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
         }
       }
 
-      // Drop buckets below the seq-logo threshold so the cell, the dropdown,
-      // and the chart all only ever see lengths with enough peptides for a
-      // meaningful MSA.
-      const rawByLength = seqListsMap.value?.get(sampleId);
-      let seqsByLength: LengthBuckets | undefined;
-      if (rawByLength) {
-        const filtered: LengthBuckets = new Map();
-        for (const [len, list] of rawByLength) {
-          if (list.length >= MIN_PEPTIDES_PER_LENGTH) filtered.set(len, list);
-        }
-        if (filtered.size > 0) seqsByLength = filtered;
-      }
-
       const distributions = distributionsMap.value?.get(sampleId);
-      // Prefer the distribution-derived dominant length. Fall back to the
-      // largest seqsByLength bucket so the cell still renders for samples
-      // where distributions haven't loaded yet.
-      let dominantLength = computeDominantLength(distributions);
-      if (dominantLength === undefined && seqsByLength) {
-        let bestSize = 0;
-        for (const [len, list] of seqsByLength) {
-          if (list.length > bestSize) {
-            bestSize = list.length;
-            dominantLength = len;
-          }
-        }
-      }
-      // Cell only renders if the dominant length itself clears the threshold;
-      // staying honest about "the dominant length doesn't have enough data" is
-      // better than silently switching to a non-dominant bucket.
-      const sequences =
-        dominantLength !== undefined ? seqsByLength?.get(dominantLength) : undefined;
+      const dominantLength = computeDominantLength(distributions);
+      const seqLogoByLength = seqLogoMap.value?.get(sampleId);
 
       return {
         sampleId,
         label: sampleLabels?.[sampleId] ?? sampleId,
         progress: progressStr,
         aaComposition: compositionMap.value?.get(sampleId),
-        sequences,
-        seqsByLength,
+        seqLogoByLength,
         dominantLength,
         qcChecks: qcChecksMap.value?.get(sampleId),
         pipelineFunnel: funnelMap.value?.get(sampleId),

@@ -184,9 +184,9 @@ export const platforma = BlockModelV3.create(dataModel)
       ?.getFileHandle();
   })
 
-  .output("aaSequences", (ctx) => {
+  .output("seqLogo", (ctx) => {
     return ctx.outputs
-      ?.resolve({ field: "aaSequences", assertFieldType: "Input", allowPermanentAbsence: true })
+      ?.resolve({ field: "seqLogo", assertFieldType: "Input", allowPermanentAbsence: true })
       ?.getFileHandle();
   })
 

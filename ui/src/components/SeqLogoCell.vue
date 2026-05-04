@@ -1,22 +1,15 @@
 <script setup lang="ts">
-import { SeqLogo, getResidueCounts } from "@milaboratories/multi-sequence-alignment";
+import { SeqLogo } from "@milaboratories/multi-sequence-alignment";
+import type { ResidueCounts } from "@milaboratories/multi-sequence-alignment";
 import type { ICellRendererParams } from "ag-grid-enterprise";
-import { computed, onBeforeUnmount, onMounted, ref, toRaw, useTemplateRef } from "vue";
+import { onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
 
 const props = defineProps<{
-  params: ICellRendererParams<unknown, string[] | undefined>;
+  params: ICellRendererParams<unknown, ResidueCounts | undefined>;
 }>();
 
 const containerEl = useTemplateRef<HTMLDivElement>("containerEl");
 const containerWidth = ref(0);
-
-// Every peptide in the dominant-length bucket is the same length by
-// construction, so we can skip MSA and feed sequences straight into
-// getResidueCounts.
-const residueCounts = computed(() => {
-  const seqs = props.params.value;
-  return seqs && seqs.length > 0 ? getResidueCounts(toRaw(seqs)) : undefined;
-});
 
 const resizeObserver = new ResizeObserver((entries) => {
   const width = entries[0]?.contentRect.width ?? 0;
@@ -35,12 +28,12 @@ onBeforeUnmount(() => {
 <template>
   <div ref="containerEl" class="seq-logo-cell">
     <SeqLogo
-      v-if="residueCounts !== undefined && containerWidth > 0"
-      :residueCounts="residueCounts"
+      v-if="params.value !== undefined && containerWidth > 0"
+      :residueCounts="params.value"
       :width="containerWidth"
       :height="32"
     />
-    <div v-else-if="!params.value?.length" class="seq-logo-not-ready">Not ready</div>
+    <div v-else-if="!params.value" class="seq-logo-not-ready">Not ready</div>
   </div>
 </template>
 

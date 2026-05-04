@@ -1,34 +1,32 @@
 <script setup lang="ts">
-import { SeqLogo, getResidueCounts } from "@milaboratories/multi-sequence-alignment";
+import { SeqLogo } from "@milaboratories/multi-sequence-alignment";
+import type { ResidueCounts } from "@milaboratories/multi-sequence-alignment";
 import type { ListOption } from "@platforma-sdk/ui-vue";
 import { PlDropdown } from "@platforma-sdk/ui-vue";
-import { computed, ref, toRaw, watch } from "vue";
-import type { LengthBuckets } from "../seqLists";
+import { computed, ref, watch } from "vue";
+import type { SeqLogoByLength } from "../seqLogo";
 
 const props = defineProps<{
-  seqsByLength: LengthBuckets | undefined;
+  seqLogoByLength: SeqLogoByLength | undefined;
   dominantLength: number | undefined;
 }>();
 
 const LOGO_WIDTH = 672;
 const LETTER_WIDTH = 30;
 
-// Length options sorted by bucket size (most populated first), labelled with
-// the count so users can see how much support each length has.
 const lengthOptions = computed<ListOption<number>[]>(() => {
-  if (!props.seqsByLength || props.seqsByLength.size === 0) return [];
-  return [...props.seqsByLength.entries()]
-    .sort((a, b) => b[1].length - a[1].length)
-    .map(([len, list]) => ({
-      value: len,
-      label: `${len} aa (${list.length.toLocaleString()})`,
-    }));
+  if (!props.seqLogoByLength || props.seqLogoByLength.size === 0) return [];
+  return [...props.seqLogoByLength.entries()]
+    .map(([len, counts]) => {
+      const total = counts[0] ? Object.values(counts[0]).reduce((s, n) => s + n, 0) : 0;
+      return { value: len, label: `${len} aa (${total.toLocaleString()})`, total };
+    })
+    .sort((a, b) => b.total - a.total)
+    .map(({ value, label }) => ({ value, label }));
 });
 
 const selectedLength = ref<number | undefined>(undefined);
 
-// Default to the dominant length whenever the sample (or its dominant length)
-// changes; users expect each sample to open on its dominant bucket.
 watch(
   () => props.dominantLength,
   (domLen) => {
@@ -37,7 +35,6 @@ watch(
   { immediate: true },
 );
 
-// If the current selection disappears (data reload), fall back to dominant.
 watch(lengthOptions, (opts) => {
   if (selectedLength.value === undefined) return;
   if (!opts.some((o) => o.value === selectedLength.value)) {
@@ -45,20 +42,11 @@ watch(lengthOptions, (opts) => {
   }
 });
 
-const sequences = computed<string[] | undefined>(() => {
+const residueCounts = computed<ResidueCounts | undefined>(() => {
   const len = selectedLength.value;
   if (len === undefined) return undefined;
-  return props.seqsByLength?.get(len);
+  return props.seqLogoByLength?.get(len);
 });
-
-// Every peptide in a length bucket is exactly that length by construction
-// (aaLengthPeptide = aaSeqPeptide.strLenChars()), so MSA is unnecessary —
-// getResidueCounts can count residues position-by-position directly.
-const residueCounts = computed(() =>
-  sequences.value && sequences.value.length > 0
-    ? getResidueCounts(toRaw(sequences.value))
-    : undefined,
-);
 
 const logoWidth = computed(() =>
   residueCounts.value

@@ -180,7 +180,12 @@ const columnDefs: ColDef<SampleResult>[] = [
     },
     cellRendererSelector: (cellData) => ({
       component: SeqLogoCell,
-      params: { value: cellData.data?.sequences },
+      params: {
+        value:
+          cellData.data?.dominantLength !== undefined
+            ? cellData.data?.seqLogoByLength?.get(cellData.data.dominantLength)
+            : undefined,
+      },
     }),
   }),
 ];
