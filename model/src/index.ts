@@ -84,6 +84,8 @@ export const platforma = BlockModelV3.create(dataModel)
 
   .output("started", (ctx) => ctx.outputs !== undefined)
 
+  .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
+
   .output("stepLogs", (ctx) => {
     return ctx.outputs !== undefined
       ? parseResourceMap(ctx.outputs?.resolve("stepLogs"), (acc) => acc.getLogHandle(), false)
