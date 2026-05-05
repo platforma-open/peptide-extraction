@@ -14,6 +14,8 @@ const props = defineProps<{
 const LOGO_WIDTH = 672;
 const LETTER_WIDTH = 30;
 
+// Length options sorted by bucket size (most populated first), labelled with
+// the count so users can see how much support each length has.
 const lengthOptions = computed<ListOption<number>[]>(() => {
   if (!props.seqLogoByLength || props.seqLogoByLength.size === 0) return [];
   return [...props.seqLogoByLength.entries()]
@@ -27,6 +29,8 @@ const lengthOptions = computed<ListOption<number>[]>(() => {
 
 const selectedLength = ref<number | undefined>(undefined);
 
+// Default to the dominant length whenever the sample (or its dominant length)
+// changes; users expect each sample to open on its dominant bucket.
 watch(
   () => props.dominantLength,
   (domLen) => {
@@ -35,6 +39,7 @@ watch(
   { immediate: true },
 );
 
+// If the current selection disappears (data reload), fall back to dominant.
 watch(lengthOptions, (opts) => {
   if (selectedLength.value === undefined) return;
   if (!opts.some((o) => o.value === selectedLength.value)) {
