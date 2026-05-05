@@ -28,7 +28,7 @@ onBeforeUnmount(() => {
 <template>
   <div ref="containerEl" class="seq-logo-cell">
     <SeqLogo
-      v-if="params.value !== undefined && containerWidth > 0"
+      v-if="params.value !== undefined && params.value !== null && containerWidth > 0"
       :residueCounts="params.value"
       :width="containerWidth"
       :height="32"
