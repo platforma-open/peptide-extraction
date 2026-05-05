@@ -697,7 +697,7 @@ const previewSegments = computed((): Segment[] => {
 
   <!-- User-configurable preset: unlock the full Add/Build editor. -->
   <template v-if="isUserConfigurablePreset">
-    <PlBtnGroup v-model="editorMode" :options="editorModeOptions" :class="$style.fullWidthGroup" />
+    <PlBtnGroup v-model="editorMode" :options="editorModeOptions" class="fullWidthGroup" />
 
     <!-- Add mode: raw tag pattern text -->
     <template v-if="editorMode === 'write'">
@@ -721,27 +721,27 @@ const previewSegments = computed((): Segment[] => {
 
     <!-- Build mode: field-based editor -->
     <template v-if="editorMode === 'build'">
-      <div v-if="previewSegments.length" :class="$style.preview">
+      <div v-if="previewSegments.length" class="preview">
         <span
           v-for="(seg, i) in previewSegments"
           :key="i"
-          :class="{ [$style.hlMismatch]: seg.hl === 'mismatch' }"
+          :class="{ hlMismatch: seg.hl === 'mismatch' }"
           >{{ seg.text }}</span
         >
       </div>
 
       <!-- Read tabs. Read 2 tab appears only when the selected input dataset
            is paired-end (derived from the input's readIndex axis). -->
-      <div :class="$style.readTabs">
+      <div class="readTabs">
         <button
-          :class="[$style.readTab, readTab === 'r1' && $style.readTabActive]"
+          :class="['readTab', { readTabActive: readTab === 'r1' }]"
           @click="readTab = 'r1'"
         >
           Read 1
         </button>
         <button
           v-if="isPairedEnd"
-          :class="[$style.readTab, readTab === 'r2' && $style.readTabActive]"
+          :class="['readTab', { readTabActive: readTab === 'r2' }]"
           @click="readTab = 'r2'"
         >
           Read 2
@@ -977,7 +977,7 @@ const previewSegments = computed((): Segment[] => {
   </template>
 </template>
 
-<style module>
+<style scoped>
 .fullWidthGroup {
   width: 100%;
 }

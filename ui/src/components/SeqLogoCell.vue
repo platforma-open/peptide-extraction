@@ -5,7 +5,7 @@ import type { ICellRendererParams } from "ag-grid-enterprise";
 import { onBeforeUnmount, onMounted, ref, useTemplateRef } from "vue";
 
 const props = defineProps<{
-  params: ICellRendererParams<unknown, ResidueCounts | undefined>;
+  params: ICellRendererParams<unknown, ResidueCounts | undefined> & { isRunning: boolean };
 }>();
 
 const containerEl = useTemplateRef<HTMLDivElement>("containerEl");
@@ -33,10 +33,14 @@ onBeforeUnmount(() => {
       :width="containerWidth"
       :height="32"
     />
-    <div v-else-if="!params.value" class="seq-logo-not-ready">Not ready</div>
+    <div v-else-if="!params.value" class="seq-logo-not-ready">
+      {{ params.isRunning ? 'Not ready' : 'Not available' }}
+    </div>
   </div>
 </template>
 
+<!-- AG Grid mounts cell renderers outside Vue's normal rendering pipeline, so
+     scoped styles (which rely on data-v-xxx attributes) don't apply. Global styles only. -->
 <style>
 .seq-logo-cell {
   height: 100%;
@@ -48,6 +52,8 @@ onBeforeUnmount(() => {
 
 .seq-logo-not-ready {
   color: var(--color-txt-03);
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  padding-left: 11px;
 }
 </style>

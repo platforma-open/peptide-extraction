@@ -30,7 +30,7 @@ const data = reactive({ expanded: false });
   </div>
 </template>
 
-<style>
+<style scoped>
 .qc-section {
   --display: none;
   --bg: transparent;
@@ -84,7 +84,7 @@ const data = reactive({ expanded: false });
   --bg: var(--bg-base-light);
 }
 
-.qc-section .pl-status-tag {
+.qc-section :deep(.pl-status-tag) {
   cursor: pointer;
 }
 </style>

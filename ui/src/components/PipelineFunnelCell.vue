@@ -10,7 +10,7 @@ import type { FunnelEntry } from "../pipelineFunnel";
 import { buildRecoveryChartData } from "../recoverySegments";
 
 const props = defineProps<{
-  params: ICellRendererParams<unknown, FunnelEntry[] | undefined>;
+  params: ICellRendererParams<unknown, FunnelEntry[] | undefined> & { isRunning: boolean };
 }>();
 
 const settings = computed(() => {
@@ -23,10 +23,14 @@ const settings = computed(() => {
 <template>
   <div class="funnel-cell">
     <PlChartStackedBarCompact v-if="settings" :settings="settings" />
-    <div v-else class="funnel-cell-not-ready">Not ready</div>
+    <div v-else class="funnel-cell-not-ready">
+      {{ params.isRunning ? 'Not ready' : 'Not available' }}
+    </div>
   </div>
 </template>
 
+<!-- AG Grid mounts cell renderers outside Vue's normal rendering pipeline, so
+     scoped styles (which rely on data-v-xxx attributes) don't apply. Global styles only. -->
 <style>
 .funnel-cell {
   height: 100%;
@@ -37,6 +41,8 @@ const settings = computed(() => {
 
 .funnel-cell-not-ready {
   color: var(--color-txt-03);
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  padding-left: 11px;
 }
 </style>
