@@ -46,40 +46,41 @@ const scaleStops = computed(() => {
 </script>
 
 <template>
-  <div v-if="bars" class="composition-chart">
+  <div class="composition-chart">
     <div class="chart-title">Amino Acid Composition (%)</div>
+    <template v-if="bars">
+      <!-- Bar chart: one column per amino acid -->
+      <div class="chart-area">
+        <div v-for="bar in bars" :key="bar.aa" class="bar-group">
+          <div class="bar-value">{{ bar.label }}</div>
+          <div class="bar-track">
+            <div
+              class="bar-fill"
+              :style="{ height: bar.heightPct + '%', backgroundColor: bar.color }"
+            />
+          </div>
+          <div class="bar-label">{{ bar.aa }}</div>
+        </div>
+      </div>
 
-    <!-- Bar chart: one column per amino acid -->
-    <div class="chart-area">
-      <div v-for="bar in bars" :key="bar.aa" class="bar-group">
-        <div class="bar-value">{{ bar.label }}</div>
-        <div class="bar-track">
+      <!-- Viridis color scale legend -->
+      <div class="scale-bar">
+        <div class="scale-gradient">
           <div
-            class="bar-fill"
-            :style="{ height: bar.heightPct + '%', backgroundColor: bar.color }"
+            v-for="(stop, i) in scaleStops"
+            :key="i"
+            class="scale-stop"
+            :style="{ backgroundColor: stop.color }"
           />
         </div>
-        <div class="bar-label">{{ bar.aa }}</div>
+        <div class="scale-labels">
+          <span>{{ scaleStops[0]?.value }}%</span>
+          <span>{{ scaleStops[scaleStops.length - 1]?.value }}%</span>
+        </div>
       </div>
-    </div>
-
-    <!-- Viridis color scale legend -->
-    <div class="scale-bar">
-      <div class="scale-gradient">
-        <div
-          v-for="(stop, i) in scaleStops"
-          :key="i"
-          class="scale-stop"
-          :style="{ backgroundColor: stop.color }"
-        />
-      </div>
-      <div class="scale-labels">
-        <span>{{ scaleStops[0]?.value }}%</span>
-        <span>{{ scaleStops[scaleStops.length - 1]?.value }}%</span>
-      </div>
-    </div>
+    </template>
+    <div v-else class="no-data">No composition data available</div>
   </div>
-  <div v-else class="no-data">No composition data available</div>
 </template>
 
 <style scoped>

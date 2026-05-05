@@ -17,16 +17,33 @@ const props = defineProps<{
 const settings = computed(() => {
   const data = buildRecoveryChartData(props.funnel);
   if (!data) return undefined;
-  return { title: "Peptide Recovery", data };
+  return { data };
 });
 </script>
 
 <template>
-  <PlChartStackedBar v-if="settings" :settings="settings" />
-  <div v-else class="funnel-no-data">No pipeline data available</div>
+  <div class="funnel-chart">
+    <div class="chart-title">Peptide Recovery</div>
+    <PlChartStackedBar v-if="settings" :settings="settings" />
+    <div v-else class="funnel-no-data">No pipeline data available</div>
+  </div>
 </template>
 
 <style scoped>
+.funnel-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 0;
+}
+
+.chart-title {
+  color: var(--color-txt-01);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
 .funnel-no-data {
   padding: 24px;
   color: var(--color-txt-03);
