@@ -733,10 +733,7 @@ const previewSegments = computed((): Segment[] => {
       <!-- Read tabs. Read 2 tab appears only when the selected input dataset
            is paired-end (derived from the input's readIndex axis). -->
       <div class="readTabs">
-        <button
-          :class="['readTab', { readTabActive: readTab === 'r1' }]"
-          @click="readTab = 'r1'"
-        >
+        <button :class="['readTab', { readTabActive: readTab === 'r1' }]" @click="readTab = 'r1'">
           Read 1
         </button>
         <button
