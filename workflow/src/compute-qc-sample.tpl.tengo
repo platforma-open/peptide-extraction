@@ -13,6 +13,7 @@
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+ll := import("@platforma-sdk/workflow-tengo:ll")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 units := import("@platforma-sdk/workflow-tengo:units")
 
@@ -30,7 +31,11 @@ self.body(func(inputs) {
 
 	hasUmi := inputs.hasUmi
 	filterInvalid := inputs.filterInvalidPeptides
+	ll.assert(!is_undefined(inputs.maxPeptideLength), "maxPeptideLength input is required")
 	maxLogoPositions := inputs.maxPeptideLength.getDataAsJson().maxLen
+	if is_undefined(maxLogoPositions) {
+		maxLogoPositions = 0
+	}
 
 	abundanceCol := "readCount"
 	if hasUmi {
@@ -223,7 +228,20 @@ self.body(func(inputs) {
 		posFrames = append(posFrames, posFrame)
 		i++
 	}
-	if len(posFrames) == 1 {
+	if len(posFrames) == 0 {
+		// No valid peptides in this sample — emit a 0-row NDJSON with the
+		// expected schema so the merge step can still concat it cleanly.
+		seqBase.
+			select(
+				pt.lit(sampleId).alias("sampleId"),
+				pt.col("aaLengthPeptide").alias("aaLength"),
+				pt.col("aaLengthPeptide").alias("position"),
+				pt.col("aaSeqPeptide").strSlice(0, {length: 1}).alias("residue"),
+				pt.col("aaLengthPeptide").cast("Long").alias("count")
+			).
+			filter(pt.lit(false)).
+			save("seqLogo.ndjson")
+	} else if len(posFrames) == 1 {
 		posFrames[0].save("seqLogo.ndjson")
 	} else {
 		pt.concat(posFrames).save("seqLogo.ndjson")
