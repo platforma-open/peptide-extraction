@@ -341,6 +341,9 @@ wf.body(func(args) {
 	// Step 3: QC report table (joins per-sample peptide tables with per-peptide properties)
 	sampleIdAxisSpec := inputSpec.axesSpec[0]
 
+	// seqLogoParamsRun computes the maximum aaLengthPeptide across all
+	// samples, used by compute-qc-sample as the loop bound for the per-
+	// position residue-count calculation.
 	seqLogoParamsRun := render.createEphemeral(seqLogoParamsTpl, {
 		propertiesFile: aggregateResults.outputData("propertiesFile")
 	})
@@ -515,12 +518,17 @@ wf.body(func(args) {
 		qcChecks: file.exportFile(qcChecksFile),
 		pipelineFunnel: file.exportFile(pipelineFunnelFile),
 		distributions: file.exportFile(distributionsFile),
+		
 		// Kept reachable so parse outputs are persisted by content hash (dedup).
 		parsedMic: perSampleResults.outputData("parsedMic"),
 		parseReport: perSampleResults.outputData("parseReport"),
 		consensusMic: perSampleResults.outputData("consensusMic"),
 		consensusReport: perSampleResults.outputData("consensusReport"),
-		parseLogStream: perSampleResults.outputData("parseLogStream")
+		parseLogStream: perSampleResults.outputData("parseLogStream"),
+		// Same intent for the cross-sample propertiesFile and per-sample
+		// peptideTableFile (dedup)
+		propertiesFile: aggregateResults.outputData("propertiesFile"),
+		peptideTableFile: perSampleResults.outputData("peptideTableFile")
 	}
 
 	exports := {
