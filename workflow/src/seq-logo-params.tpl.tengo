@@ -22,13 +22,9 @@ self.body(func(inputs) {
 
 	propsDf := wf.frame({
 		file: propertiesFile,
-		xsvType: "tsv",
-		schema: [
-			{ column: "aaLengthPeptide", type: "Int" }
-		]
+		xsvType: "parquet"
 	}, {
-		id: "props",
-		inferSchema: false
+		id: "props"
 	})
 
 	propsDf.

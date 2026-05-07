@@ -202,6 +202,22 @@ const hasUmi = computed(() => {
       </PlTooltip>
     </div>
 
+    <div v-if="!hasUmi" style="display: flex; align-items: center; gap: 4px">
+      <PlCheckbox
+        :model-value="app.model.data.removeReadSingletons ?? true"
+        @update:model-value="(v) => (app.model.data.removeReadSingletons = v)"
+      >
+        Drop read singletons
+      </PlCheckbox>
+      <PlTooltip class="info">
+        <template #tooltip>
+          Remove peptides observed in only one read. Most read singletons are sequencing errors;
+          dropping them keeps the per-sample tables and downstream analysis focused on real signal.
+          Disable to retain singletons (useful only for very low-depth experiments).
+        </template>
+      </PlTooltip>
+    </div>
+
     <!-- @TODO: Uncomment this when we have a way to test the R1-only assembly fallback -->
     <!-- <PlCheckbox v-model="autoR1OnlyAssembly">
       Auto R1-only assembly
