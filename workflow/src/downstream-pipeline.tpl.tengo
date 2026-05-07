@@ -17,8 +17,10 @@ units := import("@platforma-sdk/workflow-tengo:units")
 
 json := import("json")
 
+stopCodonReplacement := import(":stop-codon-replacement")
+
 self.defineOutputs(
-	"tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions",
+	"peptides", "stepLogs", "qcChecks", "pipelineFunnel", "distributions",
 	"consensusMic", "consensusReport"
 )
 
@@ -29,12 +31,14 @@ umiConsensusTpl := assets.importTemplate(":umi-consensus")
 
 progressPrefix := "[==PROGRESS==]"
 
-// Empty peptides table — header only, matching the schema the per-sample
-// xsv importer expects in main.tpl.tengo via columnSpecs.columnsPerSampleFn.
-// With UMI: 5 columns. Without UMI: 3 columns (no uniqueMolecule* — each read
-// is its own molecule with no barcode to dedup against).
-emptyPeptidesTsvWithUmi := "variantKey\tuniqueMoleculeCount\treadCount\tuniqueMoleculeFraction\treadFraction\n"
-emptyPeptidesTsvNoUmi := "variantKey\treadCount\treadFraction\n"
+// Empty peptides table — header only. Matches the schema the per-sample
+// xsv importer expects in main.tpl.tengo via columnSpecs.columnsPerSampleFn,
+// plus the per-peptide validity columns derived inline by the normal branch
+// below (so downstream consumers — filter-peptides, aggregate-peptides,
+// compute-qc-sample — see a uniform schema).
+derivedHeader := "\tnSeqPeptide\tntLengthPeptide\thasTrailingNucleotides\taaSeqPeptide\thasEarlyStopCodon\taaLengthPeptide\n"
+emptyPeptidesTsvWithUmi := "variantKey\tuniqueMoleculeCount\treadCount\tuniqueMoleculeFraction\treadFraction" + derivedHeader
+emptyPeptidesTsvNoUmi := "variantKey\treadCount\treadFraction" + derivedHeader
 
 self.body(func(inputs) {
 	decisionData := json.decode(string(inputs.decision.getData()))
@@ -72,6 +76,9 @@ self.body(func(inputs) {
 	collapseMemGB := inputs.collapseMemGB
 	collapseCPUs := inputs.collapseCPUs
 	isPairedEnd := inputs.isPairedEnd
+	removeReadSingletons := inputs.removeReadSingletons
+	stopCodonTypes := inputs.stopCodonTypes
+	stopCodonReplacements := inputs.stopCodonReplacements
 
 	mitoolMem := string(mitoolMemGB) + "GiB"
 
@@ -90,7 +97,6 @@ self.body(func(inputs) {
 		emptyBranchCmd := exec.builder().
 			writeFile("refine_report.txt", "").
 			writeFile("consensus_report.txt", "").
-			writeFile("peptides.tsv", emptyPeptidesTsv).
 			writeFile("qc_checks.ndjson", "").
 			writeFile("pipeline_funnel.ndjson", "").
 			writeFile("distributions.ndjson", "").
@@ -104,18 +110,51 @@ self.body(func(inputs) {
 			arg("pipeline_funnel.ndjson").
 			arg("distributions.ndjson").
 			addFile("parse_report.txt", parseReport).
-			saveFile("peptides.tsv").
 			saveFile("qc_checks.ndjson").
 			saveFile("pipeline_funnel.ndjson").
 			saveFile("distributions.ndjson").
 			run()
+
+		// Empty per-sample peptides table written as parquet
+		emptySchema := [{ column: "variantKey", type: "String" }]
+		if hasAnyUmi {
+			emptySchema = append(emptySchema,
+				{ column: "uniqueMoleculeCount", type: "Long" },
+				{ column: "readCount", type: "Long" },
+				{ column: "uniqueMoleculeFraction", type: "Double" },
+				{ column: "readFraction", type: "Double" }
+			)
+		} else {
+			emptySchema = append(emptySchema,
+				{ column: "readCount", type: "Long" },
+				{ column: "readFraction", type: "Double" }
+			)
+		}
+		emptySchema = append(emptySchema,
+			{ column: "nSeqPeptide", type: "String" },
+			{ column: "ntLengthPeptide", type: "Int" },
+			{ column: "hasTrailingNucleotides", type: "Boolean" },
+			{ column: "aaSeqPeptide", type: "String" },
+			{ column: "hasEarlyStopCodon", type: "Boolean" },
+			{ column: "aaLengthPeptide", type: "Int" }
+		)
+		emptyWf := pt.workflow().mem("256MiB").cpu(1)
+		emptyDf := emptyWf.frame(emptyPeptidesTsv, {
+			format: "tsv",
+			id: "empty",
+			schema: emptySchema,
+			inferSchema: false
+		})
+		emptyDf.save("peptides.parquet")
+		emptyResult := emptyWf.run()
+		emptyPeptidesParquet := emptyResult.getFile("peptides.parquet")
 
 		// Only the parse log exists in this branch.
 		emptyStepLogs := pcolumn.resourceMapBuilder(1)
 		emptyStepLogs.add(["1-parse"], parseLogStream)
 
 		return {
-			tsv: emptyBranchCmd.getFile("peptides.tsv"),
+			peptides: emptyPeptidesParquet,
 			stepLogs: emptyStepLogs.build(),
 			qcChecks: emptyBranchCmd.getFile("qc_checks.ndjson"),
 			pipelineFunnel: emptyBranchCmd.getFile("pipeline_funnel.ndjson"),
@@ -255,11 +294,38 @@ self.body(func(inputs) {
 				pt.col("readCount").sum()
 			).alias("readFraction")
 		)
+
+		if is_undefined(removeReadSingletons) || removeReadSingletons {
+			collapsed = collapsed.filter(pt.col("readCount").ge(pt.lit(2)))
+		}
 	}
 
-	collapsed.save("peptides.tsv")
+	// Derive per-peptide validity columns inline (per-sample).
+	codonMapReplace := stopCodonReplacement.buildReplaceCodonMap(
+		stopCodonTypes, stopCodonReplacements
+	)
+	aaWithStopReplaced := stopCodonReplacement.translateNtToAaPt(
+		pt.col("variantKey"), codonMapReplace
+	)
+	ntLenExpr := pt.col("variantKey").strLenChars()
+	ntCodonAlignedLen := ntLenExpr.floordiv(pt.lit(3)).multiply(pt.lit(3))
+
+	collapsed = collapsed.withColumns(
+		pt.col("variantKey").alias("nSeqPeptide"),
+		aaWithStopReplaced.alias("_aaRaw"),
+		ntLenExpr.alias("ntLengthPeptide"),
+		ntLenExpr.neq(ntCodonAlignedLen).alias("hasTrailingNucleotides")
+	).withColumns(
+		// aaSeqPeptide: truncate at first surviving "*" so the AA string only
+		// contains the peptide up to (but not including) the stop.
+		pt.col("_aaRaw").strReplace("\\*.*", "", { replaceAll: false }).alias("aaSeqPeptide"),
+		pt.col("_aaRaw").strContains("*", { literal: true }).alias("hasEarlyStopCodon")
+	).withColumns(
+		pt.col("aaSeqPeptide").strLenChars().alias("aaLengthPeptide")
+	).withoutColumns("_aaRaw")
+	collapsed.save("peptides.parquet")
 	collapseResult := collapseWf.run()
-	peptidesTsv := collapseResult.getFile("peptides.tsv")
+	peptidesParquet := collapseResult.getFile("peptides.parquet")
 
 	// Step 7: Extract QC checks + funnel + distributions.
 	// With UMI: pass real refine/consensus reports alongside the parse report.
@@ -315,7 +381,7 @@ self.body(func(inputs) {
 	}
 
 	return {
-		tsv: peptidesTsv,
+		peptides: peptidesParquet,
 		stepLogs: stepLogs.build(),
 		qcChecks: qcChecksCmd.getFile("qc_checks.ndjson"),
 		pipelineFunnel: qcChecksCmd.getFile("pipeline_funnel.ndjson"),

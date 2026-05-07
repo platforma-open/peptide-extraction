@@ -24,7 +24,7 @@ const settings = computed(() => {
   <div class="funnel-cell">
     <PlChartStackedBarCompact v-if="settings" :settings="settings" />
     <div v-else class="funnel-cell-not-ready">
-      {{ params.isRunning ? 'Not ready' : 'Not available' }}
+      {{ params.isRunning ? "Not ready" : "Not available" }}
     </div>
   </div>
 </template>

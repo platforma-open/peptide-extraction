@@ -18,7 +18,7 @@ render := import("@platforma-sdk/workflow-tengo:render")
 json := import("json")
 
 self.defineOutputs(
-	"tsv", "stepLogs", "qcChecks", "pipelineFunnel", "distributions",
+	"peptides", "stepLogs", "qcChecks", "pipelineFunnel", "distributions",
 	"parsedMic", "parseReport","consensusMic", "consensusReport",
 	"parseLogStream"
 )
@@ -43,6 +43,9 @@ self.body(func(inputs) {
 	collapseCPUs := inputs.collapseCPUs
 	fileExtension := inputs.fileExtension
 	unstranded := inputs.unstranded
+	removeReadSingletons := inputs.removeReadSingletons
+	stopCodonTypes := inputs.stopCodonTypes
+	stopCodonReplacements := inputs.stopCodonReplacements
 
 	parts := inputs.patternParts
 
@@ -185,11 +188,14 @@ self.body(func(inputs) {
 		mitoolCPUs: mitoolCPUs,
 		collapseMemGB: collapseMemGB,
 		collapseCPUs: collapseCPUs,
-		isPairedEnd: isPairedEnd
+		isPairedEnd: isPairedEnd,
+		removeReadSingletons: removeReadSingletons,
+		stopCodonTypes: stopCodonTypes,
+		stopCodonReplacements: stopCodonReplacements
 	})
 
 	return {
-		tsv: downstream.output("tsv"),
+		peptides: downstream.output("peptides"),
 		stepLogs: downstream.output("stepLogs"),
 		qcChecks: downstream.output("qcChecks"),
 		pipelineFunnel: downstream.output("pipelineFunnel"),

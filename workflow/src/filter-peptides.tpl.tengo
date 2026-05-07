@@ -1,29 +1,33 @@
-// Filter invalid peptides (trailing nucleotides or early stop codons) out of the
-// data that feeds the exported pframe. Runs only when the user enables the
-// filterInvalidPeptides advanced setting.
+// Filter invalid peptides (trailing nucleotides or early stop codons) out of
+// the data that feeds the exported pframe. Runs only when the user enables
+// the filterInvalidPeptides advanced setting.
 //
 // Inputs:
-//   peptideTablesData — per-sample peptide tables (ResourceMap keyed by sampleId)
+//   peptideTablesData — per-sample peptide tables (ResourceMap keyed by
+//                       sampleId). Each TSV carries the per-peptide validity
+//                       columns (hasTrailingNucleotides, hasEarlyStopCodon)
+//                       added by downstream-pipeline.tpl.tengo, so the filter
+//                       is now a pure stream-filter — no join against
+//                       propertiesFile, no validKeys hash table.
 //   propertiesFile    — single unfiltered per-peptide properties TSV
 //                       (Resource from aggregate-peptides, wrapped as a
-//                       fully-aggregated ResourceMap with a single "[]" entry)
+//                       fully-aggregated ResourceMap with a single "[]" entry).
 //
 // Outputs:
-//   filteredPerSampleTsv  — combined per-sample TSV with sampleId column added,
-//                           rows for invalid peptides removed, original fractions
-//                           preserved (post-filter sums will be <1 per sample,
-//                           which is the intended post-filter loss signal)
-//   filteredPerPeptideTsv — unfiltered properties TSV with invalid rows dropped;
-//                           aggregates (uniqueMoleculeCountSum, sampleCount,
-//                           uniqueMoleculeFractionMean) are unaffected by the
-//                           removal of *other* peptides, so no recomputation
+//   filteredPerSample  — combined per-sample TSV with sampleId column
+//                           added, rows for invalid peptides removed.
+//                           Original fractions preserved (post-filter sums
+//                           will be <1 per sample, the intended loss signal).
+//   filteredPerPeptide — propertiesFile with invalid rows dropped.
+//                           Cross-sample aggregates (uniqueMoleculeCountSum,
+//                           sampleCount, fraction means) are unaffected by
+//                           dropping *other* peptides, so no recomputation.
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 units := import("@platforma-sdk/workflow-tengo:units")
-math := import("math")
 json := import("json")
 
 self.awaitState("InputsLocked")
@@ -42,71 +46,27 @@ self.body(func(inputs) {
 	ll.assert(!is_undefined(propertiesFile), "properties file not found in resource map")
 
 	peptideTablesMap := peptideTablesData.inputs()
-	numberOfSamples := len(peptideTablesMap)
 
+	// All work here is order-preserving
 	wf := pt.workflow().
-		mem(int(math.max(numberOfSamples * 2, 4)) * units.GiB).
+		mem(8 * units.GiB).
 		cpu(1)
 
-	// Column order must match the TSV written by aggregate-peptides.tpl.tengo.
-	propertiesSchema := [
-		{ column: "variantKey", type: "String" },
-		{ column: "nSeqPeptide", type: "String" },
-		{ column: "aaSeqPeptide", type: "String" },
-		{ column: "ntLengthPeptide", type: "Int" },
-		{ column: "aaLengthPeptide", type: "Int" },
-		{ column: "peptideLabel", type: "String" },
-		{ column: "hasTrailingNucleotides", type: "Boolean" },
-		{ column: "hasEarlyStopCodon", type: "Boolean" }
-	]
-	if hasUmi {
-		propertiesSchema = append(propertiesSchema,
-			{ column: "uniqueMoleculeCountSum", type: "Long" },
-			{ column: "uniqueMoleculeFractionMean", type: "Double" }
-		)
-	} else {
-		propertiesSchema = append(propertiesSchema,
-			{ column: "readCountSum", type: "Long" },
-			{ column: "readFractionMean", type: "Double" }
-		)
-	}
-	propertiesSchema = append(propertiesSchema, { column: "sampleCount", type: "Int" })
-
+	// --- Cross-sample: filter propertiesFile, save filtered-per-peptide.parquet ---
 	propsDf := wf.frame({
 		file: propertiesFile,
-		xsvType: "tsv",
-		schema: propertiesSchema
+		xsvType: "parquet"
 	}, {
-		id: "props",
-		inferSchema: false
+		id: "props"
 	})
 
 	// Valid peptides = rows where neither flag is set.
 	validFilter := pt.col("hasTrailingNucleotides").not().
 		and(pt.col("hasEarlyStopCodon").not())
 
-	// Per-peptide output: same schema as input, invalid rows dropped.
-	filteredPropsDf := propsDf.filter(validFilter)
-	filteredPropsDf.sort(["variantKey"]).save("filtered-per-peptide.tsv")
+	propsDf.filter(validFilter).save("filtered-per-peptide.parquet")
 
-	// Valid-keys frame reused to drop invalid peptides from each sample's table
-	// via an inner join (much cheaper than a full properties join).
-	validKeysDf := filteredPropsDf.select(pt.col("variantKey"))
-
-	perSampleSchema := [{ column: "variantKey", type: "String" }]
-	if hasUmi {
-		perSampleSchema = append(perSampleSchema,
-			{ column: "uniqueMoleculeCount", type: "Long" },
-			{ column: "readCount", type: "Long" },
-			{ column: "uniqueMoleculeFraction", type: "Double" },
-			{ column: "readFraction", type: "Double" }
-		)
-	} else {
-		perSampleSchema = append(perSampleSchema,
-			{ column: "readCount", type: "Long" },
-			{ column: "readFraction", type: "Double" }
-		)
-	}
+	// --- Per-sample: stream-filter each sample on the same predicate ---
 
 	perSampleFrames := []
 	for sKey in maps.getKeys(peptideTablesMap) {
@@ -116,14 +76,13 @@ self.body(func(inputs) {
 
 		sampleDf := wf.frame({
 			file: sampleFile,
-			xsvType: "tsv",
-			schema: perSampleSchema
+			xsvType: "parquet"
 		}, {
-			id: "sample_" + sampleId,
-			inferSchema: false
+			id: "sample_" + sampleId
 		})
 
-		filteredSampleDf := sampleDf.join(validKeysDf, { on: "variantKey", how: "inner" }).
+		filteredSampleDf := sampleDf.
+			filter(validFilter).
 			withColumns(pt.lit(sampleId).alias("sampleId"))
 
 		perSampleFrames = append(perSampleFrames, filteredSampleDf)
@@ -138,12 +97,12 @@ self.body(func(inputs) {
 		allPerSample = pt.concat(perSampleFrames)
 	}
 
-	allPerSample.sort(["sampleId", "variantKey"]).save("filtered-per-sample.tsv")
+	allPerSample.save("filtered-per-sample.parquet")
 
 	result := wf.run()
 
 	return {
-		filteredPerSampleTsv: result.getFile("filtered-per-sample.tsv"),
-		filteredPerPeptideTsv: result.getFile("filtered-per-peptide.tsv")
+		filteredPerSample: result.getFile("filtered-per-sample.parquet"),
+		filteredPerPeptide: result.getFile("filtered-per-peptide.parquet")
 	}
 })

@@ -7,6 +7,7 @@
 // instead of a hardcoded upper bound.
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
+ll := import("@platforma-sdk/workflow-tengo:ll")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 units := import("@platforma-sdk/workflow-tengo:units")
 
@@ -17,18 +18,15 @@ self.body(func(inputs) {
 	propertiesFileData := inputs.propertiesFile
 	propertiesFileMap := propertiesFileData.inputs()
 	propertiesFile := propertiesFileMap["[]"]
+	ll.assert(!is_undefined(propertiesFile), "properties file not found in resource map")
 
 	wf := pt.workflow().mem(1 * units.GiB).cpu(1)
 
 	propsDf := wf.frame({
 		file: propertiesFile,
-		xsvType: "tsv",
-		schema: [
-			{ column: "aaLengthPeptide", type: "Int" }
-		]
+		xsvType: "parquet"
 	}, {
-		id: "props",
-		inferSchema: false
+		id: "props"
 	})
 
 	propsDf.

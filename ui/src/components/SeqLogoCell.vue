@@ -34,7 +34,7 @@ onBeforeUnmount(() => {
       :height="32"
     />
     <div v-else-if="!params.value" class="seq-logo-not-ready">
-      {{ params.isRunning ? 'Not ready' : 'Not available' }}
+      {{ params.isRunning ? "Not ready" : "Not available" }}
     </div>
   </div>
 </template>

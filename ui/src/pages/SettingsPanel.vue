@@ -120,6 +120,21 @@ const hasUmi = computed(() => {
 
   <PatternEditor />
 
+  <div :class="$style.checkboxRow">
+    <PlCheckbox
+      :model-value="app.model.data.unstranded ?? false"
+      @update:model-value="(v) => (app.model.data.unstranded = v)"
+    >
+      Unstranded library
+    </PlCheckbox>
+    <PlTooltip class="info">
+      <template #tooltip>
+        Enable for libraries where reads can come in either orientation.<br /><br />
+        Leave off for stranded preps where R1 always reads the forward strand.
+      </template>
+    </PlTooltip>
+  </div>
+
   <PlAccordionSection label="Advanced settings">
     <div v-if="hasUmi" style="display: flex; gap: 12px">
       <PlNumberField
@@ -156,50 +171,53 @@ const hasUmi = computed(() => {
       </template>
     </PlNumberField>
 
-    <div style="display: flex; align-items: center; gap: 4px">
-      <PlCheckbox
-        :model-value="app.model.data.useWildcards ?? true"
-        @update:model-value="(v) => (app.model.data.useWildcards = v)"
-      >
-        Mask homopolymers in anchors
-      </PlCheckbox>
-      <PlTooltip class="info">
-        <template #tooltip>
-          Detect runs of 5+ identical bases in constant region anchors and replace them with
-          <code>n</code> wildcards. Homopolymers waste error budget because sequencers struggle to
-          resolve exact repeat lengths.
-        </template>
-      </PlTooltip>
-    </div>
+    <div :class="$style.checkboxGroup">
+      <div :class="$style.checkboxRow">
+        <PlCheckbox
+          :model-value="app.model.data.useWildcards ?? true"
+          @update:model-value="(v) => (app.model.data.useWildcards = v)"
+        >
+          Mask homopolymers in anchors
+        </PlCheckbox>
+        <PlTooltip class="info">
+          <template #tooltip>
+            Detect runs of 5+ identical bases in constant region anchors and replace them with
+            <code>n</code> wildcards. Homopolymers waste error budget because sequencers struggle to
+            resolve exact repeat lengths.
+          </template>
+        </PlTooltip>
+      </div>
 
-    <div style="display: flex; align-items: center; gap: 4px">
-      <PlCheckbox
-        :model-value="app.model.data.unstranded ?? false"
-        @update:model-value="(v) => (app.model.data.unstranded = v)"
-      >
-        Unstranded library
-      </PlCheckbox>
-      <PlTooltip class="info">
-        <template #tooltip>
-          Enable for libraries where reads can come in either orientation.<br /><br />
-          Leave off for stranded preps where R1 always reads the forward strand.
-        </template>
-      </PlTooltip>
-    </div>
+      <div :class="$style.checkboxRow">
+        <PlCheckbox
+          :model-value="app.model.data.filterInvalidPeptides ?? true"
+          @update:model-value="(v) => (app.model.data.filterInvalidPeptides = v)"
+        >
+          Drop peptides with early stop or trailing nucleotides
+        </PlCheckbox>
+        <PlTooltip class="info">
+          <template #tooltip>
+            Remove peptides whose nucleotide sequence contains an internal stop codon or whose
+            length is not a multiple of three.
+          </template>
+        </PlTooltip>
+      </div>
 
-    <div style="display: flex; align-items: center; gap: 4px">
-      <PlCheckbox
-        :model-value="app.model.data.filterInvalidPeptides ?? true"
-        @update:model-value="(v) => (app.model.data.filterInvalidPeptides = v)"
-      >
-        Drop peptides with early stop or trailing nucleotides
-      </PlCheckbox>
-      <PlTooltip class="info">
-        <template #tooltip>
-          Remove peptides whose nucleotide sequence contains an internal stop codon or whose length
-          is not a multiple of three.
-        </template>
-      </PlTooltip>
+      <div v-if="!hasUmi" :class="$style.checkboxRow">
+        <PlCheckbox
+          :model-value="app.model.data.removeReadSingletons ?? true"
+          @update:model-value="(v) => (app.model.data.removeReadSingletons = v)"
+        >
+          Drop read singletons
+        </PlCheckbox>
+        <PlTooltip class="info">
+          <template #tooltip>
+            Remove peptides observed in only one read. Most read singletons are sequencing errors;
+            dropping them keeps the per-sample tables and downstream analysis focused on real
+            signal. Disable to retain singletons (useful only for very low-depth experiments).
+          </template>
+        </PlTooltip>
+      </div>
     </div>
 
     <!-- @TODO: Uncomment this when we have a way to test the R1-only assembly fallback -->
@@ -268,3 +286,17 @@ const hasUmi = computed(() => {
     </PlNumberField>
   </PlAccordionSection>
 </template>
+
+<style module>
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.checkboxGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+</style>
