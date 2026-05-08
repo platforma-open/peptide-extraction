@@ -1,5 +1,12 @@
 # @platforma-open/milaboratories.peptide-profiling
 
+## 1.1.2
+
+### Patch Changes
+
+- Updated dependencies [460e340]
+  - @platforma-open/milaboratories.peptide-profiling.workflow@1.1.2
+
 ## 1.1.1
 
 ### Patch Changes

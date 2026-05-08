@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.peptide-profiling.workflow
 
+## 1.1.2
+
+### Patch Changes
+
+- 460e340: Minor fixes
+
 ## 1.1.1
 
 ### Patch Changes
