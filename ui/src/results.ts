@@ -4,13 +4,14 @@ import { computed } from "vue";
 import type { SampleComposition } from "./aaComposition";
 import { parseCompositionNdjson } from "./aaComposition";
 import { useApp } from "./app";
-import { parseSeqListsNdjson } from "./seqLists";
 import type { SampleDistributions } from "./distributions";
 import { parseDistributionsNdjson } from "./distributions";
 import type { FunnelEntry } from "./pipelineFunnel";
 import { parseFunnelNdjson } from "./pipelineFunnel";
 import type { QcCheckResult } from "./qcChecks";
 import { parseQcChecksNdjson } from "./qcChecks";
+import type { SeqLogoByLength } from "./seqLogo";
+import { parseSeqLogoNdjson } from "./seqLogo";
 
 const reactiveFileContent = ReactiveFileContent.useGlobal();
 
@@ -19,18 +20,34 @@ export type SampleResult = {
   label: string;
   progress: string;
   aaComposition?: SampleComposition;
-  sequences?: string[];
+  /** Pre-computed seq-logo residue counts keyed by AA length. */
+  seqLogoByLength?: SeqLogoByLength;
+  /** Most-abundant peptide length (from aa_length distribution). */
+  dominantLength?: number;
   qcChecks?: QcCheckResult[];
   pipelineFunnel?: FunnelEntry[];
   distributions?: SampleDistributions;
 };
 
-const seqListsMap = computed<Map<string, string[]> | undefined>(() => {
+const seqLogoMap = computed<Map<string, SeqLogoByLength> | undefined>(() => {
   const app = useApp();
-  const blob = app.model.outputs.aaSequences;
+  const blob = app.model.outputs.seqLogo;
   const content = blob ? reactiveFileContent.getContentString(blob.handle)?.value : undefined;
-  return content ? parseSeqListsNdjson(content) : undefined;
+  return content ? parseSeqLogoNdjson(content) : undefined;
 });
+
+/** Pick the most-populated AA length bin from a sample's length distribution. */
+function computeDominantLength(dist: SampleDistributions | undefined): number | undefined {
+  const aaLen = dist?.aa_length;
+  if (!aaLen?.length) return undefined;
+  let best: { len: number; count: number } | undefined;
+  for (const bin of aaLen) {
+    const len = parseInt(bin.bin, 10);
+    if (Number.isNaN(len)) continue;
+    if (!best || bin.count > best.count) best = { len, count: bin.count };
+  }
+  return best?.len;
+}
 
 /** Per-sample AA composition, parsed once and cached until the file changes */
 const compositionMap = computed<Map<string, SampleComposition> | undefined>(() => {
@@ -183,15 +200,20 @@ export const sampleResults = computed<SampleResult[] | undefined>(() => {
         }
       }
 
+      const distributions = distributionsMap.value?.get(sampleId);
+      const dominantLength = computeDominantLength(distributions);
+      const seqLogoByLength = seqLogoMap.value?.get(sampleId);
+
       return {
         sampleId,
         label: sampleLabels?.[sampleId] ?? sampleId,
         progress: progressStr,
         aaComposition: compositionMap.value?.get(sampleId),
-        sequences: seqListsMap.value?.get(sampleId),
+        seqLogoByLength,
+        dominantLength,
         qcChecks: qcChecksMap.value?.get(sampleId),
         pipelineFunnel: funnelMap.value?.get(sampleId),
-        distributions: distributionsMap.value?.get(sampleId),
+        distributions,
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label));

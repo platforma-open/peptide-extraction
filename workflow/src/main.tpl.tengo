@@ -15,8 +15,10 @@ file := import("@platforma-sdk/workflow-tengo:file")
 
 mitoolPipelineTpl := assets.importTemplate(":mitool-pipeline")
 aggregatePeptidesTpl := assets.importTemplate(":aggregate-peptides")
+computeQcSampleTpl := assets.importTemplate(":compute-qc-sample")
 computeQcTpl := assets.importTemplate(":compute-qc")
 filterPeptidesTpl := assets.importTemplate(":filter-peptides")
+seqLogoParamsTpl := assets.importTemplate(":seq-logo-params")
 columnSpecs := import(":column-specs")
 
 wf.prepare(func(args) {
@@ -82,12 +84,12 @@ wf.body(func(args) {
 			valueType: "File"
 		},
 		name: "peptideTableFile",
-		path: ["tsv"]
+		path: ["peptides"]
 	}
 
 	peptideTableXsvOutput := {
 		type: "Xsv",
-		xsvType: "tsv",
+		xsvType: "parquet",
 		settings: {
 			axes: [variantKeyAxis],
 			columns: columnsPerSample,
@@ -97,7 +99,7 @@ wf.body(func(args) {
 		mem: string(defaultXsvMemGB) + "GiB",
 		cpu: defaultXsvCPUs,
 		name: "peptideTableXsv",
-		path: ["tsv"]
+		path: ["peptides"]
 	}
 
 	stepLogsOutput := {
@@ -265,7 +267,10 @@ wf.body(func(args) {
 				autoR1OnlyAssembly: args.autoR1OnlyAssembly,
 				patternParts: args.patternParts,
 				fileExtension: fileExtension,
-				unstranded: args.unstranded
+				unstranded: args.unstranded,
+				removeReadSingletons: args.removeReadSingletons,
+				stopCodonTypes: args.stopCodonTypes,
+				stopCodonReplacements: args.stopCodonReplacements
 			},
 
 			// by passing those parameters as meta fields we allow for recovery and deduplication mechanisms
@@ -282,7 +287,7 @@ wf.body(func(args) {
 	// Step 2: Cross-sample aggregation + properties
 	perPeptideXsvOutput := {
 		type: "Xsv",
-		xsvType: "tsv",
+		xsvType: "parquet",
 		settings: {
 			axes: [variantKeyAxis],
 			columns: columnSpecs.columnsPerVariantFromSample + columnsAggregated,
@@ -292,7 +297,7 @@ wf.body(func(args) {
 		mem: string(defaultXsvMemGB) + "GiB",
 		cpu: defaultXsvCPUs,
 		name: "perPeptideXsv",
-		path: ["propertiesTsv"]
+		path: ["properties"]
 	}
 
 	// Raw properties file (for QC step)
@@ -308,7 +313,7 @@ wf.body(func(args) {
 			valueType: "File"
 		},
 		name: "propertiesFile",
-		path: ["propertiesTsv"]
+		path: ["properties"]
 	}
 
 	aggregateResults := pframes.processColumn(
@@ -322,9 +327,7 @@ wf.body(func(args) {
 			}],
 			//stepCache: 30 * times.minute,
 			extra: {
-				hasUmi: hasUmi,
-				stopCodonTypes: args.stopCodonTypes,
-				stopCodonReplacements: args.stopCodonReplacements
+				hasUmi: hasUmi
 			},
 			metaExtra: {
 				aggMinMemGB: defaultAggMinMemGB,
@@ -338,18 +341,67 @@ wf.body(func(args) {
 	// Step 3: QC report table (joins per-sample peptide tables with per-peptide properties)
 	sampleIdAxisSpec := inputSpec.axesSpec[0]
 
+	// seqLogoParamsRun computes the maximum aaLengthPeptide across all
+	// samples, used by compute-qc-sample as the loop bound for the per-
+	// position residue-count calculation.
+	seqLogoParamsRun := render.createEphemeral(seqLogoParamsTpl, {
+		propertiesFile: aggregateResults.outputData("propertiesFile")
+	})
+
+	// Per-sample QC. One processColumn invocation per sampleId computes
+	// QC stats, AA composition, seq-logo, length distributions, and abundance-
+	// weighted property checks for that sample only. The cross-sample merge
+	// (computeQcTpl below) just concatenates the per-sample outputs.
+	qcSampleOutput := func(name) {
+		return {
+			type: "Resource",
+			spec: {
+				kind: "PColumn",
+				name: "pl7.app/peptide/qcSample/" + name,
+				domain: {
+					"pl7.app/peptide/extractionRunId": blockId
+				},
+				valueType: "File"
+			},
+			name: name,
+			path: [name]
+		}
+	}
+
+	qcSampleResults := pframes.processColumn(
+		perSampleResults.output("peptideTableFile"),
+		computeQcSampleTpl,
+		[
+			qcSampleOutput("qcRow"),
+			qcSampleOutput("propertyChecks"),
+			qcSampleOutput("aaComposition"),
+			qcSampleOutput("seqLogo"),
+			qcSampleOutput("lengthDist")
+		],
+		{
+			passKey: true,
+			extra: {
+				hasUmi: hasUmi,
+				filterInvalidPeptides: args.filterInvalidPeptides,
+				maxPeptideLength: seqLogoParamsRun.output("maxPeptideLength")
+			}
+		}
+	)
+
 	qcRun := render.createEphemeral(computeQcTpl, {
-		peptideTablesData: perSampleResults.outputData("peptideTableFile"),
-		propertiesFile: aggregateResults.outputData("propertiesFile"),
+		qcRowsData: qcSampleResults.outputData("qcRow"),
+		propertyChecksData: qcSampleResults.outputData("propertyChecks"),
+		aaCompositionData: qcSampleResults.outputData("aaComposition"),
+		seqLogoData: qcSampleResults.outputData("seqLogo"),
+		lengthDistData: qcSampleResults.outputData("lengthDist"),
 		qcChecksData: perSampleResults.outputData("qcChecksFile"),
 		pipelineFunnelData: perSampleResults.outputData("pipelineFunnelFile"),
-		distributionsData: perSampleResults.outputData("distributionsFile"),
-		hasUmi: hasUmi
+		distributionsData: perSampleResults.outputData("distributionsFile")
 	})
 
 	qcTsvFile := qcRun.output("qcTable")
 	aaCompositionFile := qcRun.output("aaComposition")
-	aaSequencesFile := qcRun.output("aaSequences")
+	seqLogoFile := qcRun.output("seqLogo")
 	qcChecksFile := qcRun.output("qcChecks")
 	pipelineFunnelFile := qcRun.output("pipelineFunnel")
 	distributionsFile := qcRun.output("distributions")
@@ -400,8 +452,8 @@ wf.body(func(args) {
 		})
 
 		filteredPerSampleXsv := xsv.importFile(
-			filterRun.output("filteredPerSampleTsv"),
-			"tsv",
+			filterRun.output("filteredPerSample"),
+			"parquet",
 			{
 				axes: [
 					{ column: "sampleId", spec: sampleIdAxisSpec },
@@ -422,8 +474,8 @@ wf.body(func(args) {
 		}
 
 		filteredPerPeptideXsv := xsv.importFile(
-			filterRun.output("filteredPerPeptideTsv"),
-			"tsv",
+			filterRun.output("filteredPerPeptide"),
+			"parquet",
 			{
 				axes: [variantKeyAxis],
 				columns: columnSpecs.columnsPerVariantFromSample + columnsAggregated,
@@ -462,16 +514,21 @@ wf.body(func(args) {
 		qcReportTable: pframes.exportFrame(qcPf),
 		stepLogs: perSampleResults.outputData("stepLogs"),
 		aaComposition: file.exportFile(aaCompositionFile),
-		aaSequences: file.exportFile(aaSequencesFile),
+		seqLogo: file.exportFile(seqLogoFile),
 		qcChecks: file.exportFile(qcChecksFile),
 		pipelineFunnel: file.exportFile(pipelineFunnelFile),
 		distributions: file.exportFile(distributionsFile),
+		
 		// Kept reachable so parse outputs are persisted by content hash (dedup).
 		parsedMic: perSampleResults.outputData("parsedMic"),
 		parseReport: perSampleResults.outputData("parseReport"),
 		consensusMic: perSampleResults.outputData("consensusMic"),
 		consensusReport: perSampleResults.outputData("consensusReport"),
-		parseLogStream: perSampleResults.outputData("parseLogStream")
+		parseLogStream: perSampleResults.outputData("parseLogStream"),
+		// Same intent for the cross-sample propertiesFile and per-sample
+		// peptideTableFile (dedup)
+		propertiesFile: aggregateResults.outputData("propertiesFile"),
+		peptideTableFile: perSampleResults.outputData("peptideTableFile")
 	}
 
 	exports := {

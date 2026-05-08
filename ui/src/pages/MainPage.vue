@@ -101,6 +101,7 @@ const defaultColumnDef: ColDef = {
   sortable: false,
 };
 
+const isRunning = computed(() => app.model.outputs.isRunning ?? false);
 const columnDefs: ColDef<SampleResult>[] = [
   makeRowNumberColDef(),
   createAgGridColDef<SampleResult, string>({
@@ -167,7 +168,7 @@ const columnDefs: ColDef<SampleResult>[] = [
     },
     cellRendererSelector: (cellData) => ({
       component: PipelineFunnelCell,
-      params: { value: cellData.data?.pipelineFunnel },
+      params: { value: cellData.data?.pipelineFunnel, isRunning },
     }),
   }),
   createAgGridColDef<SampleResult, string[] | undefined>({
@@ -180,7 +181,13 @@ const columnDefs: ColDef<SampleResult>[] = [
     },
     cellRendererSelector: (cellData) => ({
       component: SeqLogoCell,
-      params: { value: cellData.data?.sequences },
+      params: {
+        value:
+          cellData.data?.dominantLength !== undefined
+            ? cellData.data?.seqLogoByLength?.get(cellData.data.dominantLength)
+            : undefined,
+        isRunning,
+      },
     }),
   }),
 ];

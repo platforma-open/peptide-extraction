@@ -1,9 +1,16 @@
-// Cross-sample aggregation + per-peptide column derivation, all in pt.
+// Cross-sample aggregation.
 //
-// Receives per-sample peptide tables (via processColumn with sampleId aggregation):
-//   1. ptabler: merge all samples, compute cross-sample aggregates
-//   2. ptabler: trim to codon boundary, translate nt → aa (with optional
-//      user-controlled stop-codon replacement
+// Receives per-sample peptide tables (via processColumn with sampleId aggregation).
+// Then:
+//   1. union all per-sample frames
+//   2. groupBy variantKey: sum/mean abundance, propagate validity via first(),
+//      count samples
+//   3. derive peptideLabel (hash of variantKey, kept cross-sample so labels
+//      are stable per peptide rather than recomputed per sample)
+//
+// Moving the per-peptide derivation per-sample lets filter-peptides and
+// compute-qc-sample read everything they need from each sample's TSV without
+// joining against a huge cross-sample propertiesFile that can cause OOM.
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
@@ -14,10 +21,9 @@ units := import("@platforma-sdk/workflow-tengo:units")
 math := import("math")
 json := import("json")
 
-stopCodonReplacement := import(":stop-codon-replacement")
 peptideLabel := import(":peptide-label")
 
-self.defineOutputs("propertiesTsv")
+self.defineOutputs("properties")
 
 self.body(func(inputs) {
 	inputData := inputs[pConstants.VALUE_FIELD_NAME]
@@ -28,8 +34,6 @@ self.body(func(inputs) {
 	aggMinMemGB := inputs.aggMinMemGB
 	aggMinCPUs := inputs.aggMinCPUs
 	hasUmi := inputs.hasUmi
-	stopCodonTypes := inputs.stopCodonTypes
-	stopCodonReplacements := inputs.stopCodonReplacements
 
 	inputMap := inputData.inputs()
 	numberOfSamples := len(inputMap)
@@ -38,23 +42,6 @@ self.body(func(inputs) {
 		mem(int(math.max(numberOfSamples, aggMinMemGB)) * units.GiB).
 		cpu(int(math.max(numberOfSamples, aggMinCPUs)))
 
-	// Per-sample schema matches what downstream-pipeline emits. With UMI: 5
-	// columns including uniqueMolecule*. Without UMI: 3 columns (readCount is
-	// the primary abundance).
-	baseSchema := [{ column: "variantKey", type: "String" }]
-	if hasUmi {
-		baseSchema = append(baseSchema,
-			{ column: "uniqueMoleculeCount", type: "Long" },
-			{ column: "readCount", type: "Long" },
-			{ column: "uniqueMoleculeFraction", type: "Double" },
-			{ column: "readFraction", type: "Double" }
-		)
-	} else {
-		baseSchema = append(baseSchema,
-			{ column: "readCount", type: "Long" },
-			{ column: "readFraction", type: "Double" }
-		)
-	}
 
 	dataFrames := []
 	for sKey in maps.getKeys(inputMap) {
@@ -68,11 +55,9 @@ self.body(func(inputs) {
 
 		df := wf.frame({
 			file: inputFile,
-			xsvType: "tsv",
-			schema: baseSchema
+			xsvType: "parquet"
 		}, {
-			id: dfId,
-			inferSchema: false
+			id: dfId
 		})
 		dataFrames = append(dataFrames, df)
 	}
@@ -86,7 +71,7 @@ self.body(func(inputs) {
 		currentDf = pt.concat(dataFrames)
 	}
 
-	// 1. Aggregate across samples per peptide (variantKey is the unique key)
+	// Aggregate across samples per peptide.
 	aggExprs := []
 	if hasUmi {
 		aggExprs = append(aggExprs,
@@ -100,62 +85,24 @@ self.body(func(inputs) {
 		)
 	}
 	aggExprs = append(aggExprs,
-		pt.col("readFraction").count().alias("sampleCount")
+		pt.col("readFraction").count().alias("sampleCount"),
+		pt.col("nSeqPeptide").first().alias("nSeqPeptide"),
+		pt.col("ntLengthPeptide").first().alias("ntLengthPeptide"),
+		pt.col("hasTrailingNucleotides").first().alias("hasTrailingNucleotides"),
+		pt.col("aaSeqPeptide").first().alias("aaSeqPeptide"),
+		pt.col("hasEarlyStopCodon").first().alias("hasEarlyStopCodon"),
+		pt.col("aaLengthPeptide").first().alias("aaLengthPeptide")
 	)
 	aggregatedDf := currentDf.groupBy("variantKey").agg(aggExprs...)
 
-	// 2. Derive per-peptide columns: nt length, aa translation, length flags
-	codonMapBase := stopCodonReplacement.codonMapBase
-	codonMapReplace := stopCodonReplacement.buildReplaceCodonMap(stopCodonTypes, stopCodonReplacements)
-
-	// Translate variantKey
-	aaWithStopReplaced := stopCodonReplacement.translateNtToAaPt(pt.col("variantKey"), codonMapReplace)
-	// aaWithStopBase := stopCodonReplacement.translateNtToAaPt(pt.col("variantKey"), codonMapBase)
-
-	// Get nucleotide sequence length
-	ntLenExpr := pt.col("variantKey").strLenChars()
-	ntCodonAlignedLen := ntLenExpr.floordiv(pt.lit(3)).multiply(pt.lit(3))
-
-	aggregatedDf = aggregatedDf.withColumns(
-		// nSeqPeptide: alias of variantKey (kept as a separate column for the
-		// nucleotide-alphabet PColumn spec)
-		pt.col("variantKey").alias("nSeqPeptide"),
-		// Full translated AA, including any stops that survived replacement
-		aaWithStopReplaced.alias("_aaRaw"),
-		// Translation under the standard genetic code (audit reference — disabled)
-		// aaWithStopBase.alias("_aaBase"),
-		// nt length of the full variantKey
-		ntLenExpr.alias("ntLengthPeptide"),
-		// hasTrailingNucleotides — native bool
-		ntLenExpr.neq(ntCodonAlignedLen).alias("hasTrailingNucleotides")
-	)
-
-	aggregatedDf = aggregatedDf.withColumns(
-		// Final aaSeqPeptide: truncate at the first surviving "*" so the AA
-		// string only contains the peptide up to (but not including) the stop.
-		pt.col("_aaRaw").strReplace("\\*.*", "", { replaceAll: false }).alias("aaSeqPeptide"),
-		// hasEarlyStopCodon — native bool, true iff the raw translation contains
-		// any "*" (i.e. a stop the user did NOT replace).
-		pt.col("_aaRaw").strContains("*", { literal: true }).alias("hasEarlyStopCodon")
-		// stopCodonReplaced — true iff the user's replacements actually changed
-		// the AA sequence (disabled)
-		// , pt.col("_aaRaw").neq(pt.col("_aaBase")).alias("stopCodonReplaced")
-	)
-
-	aggregatedDf = aggregatedDf.withColumns(
-		pt.col("aaSeqPeptide").strLenChars().alias("aaLengthPeptide")
-	)
-
-	// 3. Peptide label (hash-derived, mirroring mixcr-clonotyping)
+	// peptideLabel (hash-derived) is kept cross-sample so labels are stable per
+	// peptide identity rather than recomputed per sample.
 	aggregatedDf = peptideLabel.addPeptideLabelColumnsPt(aggregatedDf, "variantKey", "peptideLabel")
-
-	// 4. Drop scratch columns and write deterministic output
-	aggregatedDf = aggregatedDf.withoutColumns("_aaRaw")
-	aggregatedDf.sort(["variantKey"]).save("properties.tsv")
+	aggregatedDf.sort(["variantKey"]).save("properties.parquet")
 
 	ptablerResult := wf.run()
 
 	return {
-		propertiesTsv: ptablerResult.getFile("properties.tsv")
+		properties: ptablerResult.getFile("properties.parquet")
 	}
 })

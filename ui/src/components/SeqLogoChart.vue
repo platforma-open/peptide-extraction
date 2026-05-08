@@ -1,69 +1,87 @@
 <script setup lang="ts">
-import {
-  SeqLogo,
-  alignSequences,
-  getResidueCounts,
-} from "@milaboratories/multi-sequence-alignment";
+import { SeqLogo } from "@milaboratories/multi-sequence-alignment";
 import type { ResidueCounts } from "@milaboratories/multi-sequence-alignment";
-import { computed, onBeforeUnmount, shallowRef, toRaw, watch } from "vue";
+import type { ListOption } from "@platforma-sdk/ui-vue";
+import { PlDropdown } from "@platforma-sdk/ui-vue";
+import { computed, ref, watch } from "vue";
+import type { SeqLogoByLength } from "../seqLogo";
 
 const props = defineProps<{
-  sequences: string[] | undefined;
+  seqLogoByLength: SeqLogoByLength | undefined;
+  dominantLength: number | undefined;
 }>();
 
 const LOGO_WIDTH = 672;
 const LETTER_WIDTH = 30;
 
-const residueCounts = shallowRef<ResidueCounts | undefined>(undefined);
+// Length options sorted by bucket size (most populated first), labelled with
+// the count so users can see how much support each length has.
+const lengthOptions = computed<ListOption<number>[]>(() => {
+  if (!props.seqLogoByLength || props.seqLogoByLength.size === 0) return [];
+  return [...props.seqLogoByLength.entries()]
+    .map(([len, counts]) => {
+      const total = counts[0] ? Object.values(counts[0]).reduce((s, n) => s + n, 0) : 0;
+      return { value: len, label: `${len} aa (${total.toLocaleString()})`, total };
+    })
+    .sort((a, b) => b.total - a.total)
+    .map(({ value, label }) => ({ value, label }));
+});
+
+const selectedLength = ref<number | undefined>(undefined);
+
+// Default to the dominant length whenever the sample (or its dominant length)
+// changes; users expect each sample to open on its dominant bucket.
+watch(
+  () => props.dominantLength,
+  (domLen) => {
+    selectedLength.value = domLen;
+  },
+  { immediate: true },
+);
+
+// If the current selection disappears (data reload), fall back to dominant.
+watch(lengthOptions, (opts) => {
+  if (selectedLength.value === undefined) return;
+  if (!opts.some((o) => o.value === selectedLength.value)) {
+    selectedLength.value = props.dominantLength;
+  }
+});
+
+const residueCounts = computed<ResidueCounts | undefined>(() => {
+  const len = selectedLength.value;
+  if (len === undefined) return undefined;
+  return props.seqLogoByLength?.get(len);
+});
 
 const logoWidth = computed(() =>
   residueCounts.value
     ? Math.min(LOGO_WIDTH, LETTER_WIDTH * residueCounts.value.length)
     : LOGO_WIDTH,
 );
-
-let abortController: AbortController | undefined;
-
-onBeforeUnmount(() => {
-  abortController?.abort();
-});
-
-watch(
-  () => props.sequences,
-  async (sequences) => {
-    abortController?.abort();
-    residueCounts.value = undefined;
-
-    if (!sequences || sequences.length === 0) return;
-
-    abortController = new AbortController();
-    const { signal } = abortController;
-    try {
-      const aligned = await alignSequences(toRaw(sequences), undefined, signal);
-      if (!signal.aborted) {
-        residueCounts.value = getResidueCounts(aligned);
-      }
-    } catch (e) {
-      console.error("[SeqLogoChart] alignment error:", e);
-    }
-  },
-  { immediate: true },
-);
 </script>
 
 <template>
-  <div v-if="sequences?.length" class="seq-logo-chart">
+  <div class="seq-logo-chart">
     <div class="chart-title">Sequence Logo</div>
-    <div class="logo-area">
-      <SeqLogo
-        v-if="residueCounts !== undefined"
-        :residueCounts="residueCounts"
-        :width="logoWidth"
-        :height="160"
+    <template v-if="lengthOptions.length > 0">
+      <PlDropdown
+        v-if="lengthOptions.length > 1"
+        v-model="selectedLength"
+        label="Peptide length"
+        :options="lengthOptions"
+        class="peptide-length-dropdown"
       />
-    </div>
+      <div class="logo-area">
+        <SeqLogo
+          v-if="residueCounts !== undefined"
+          :residueCounts="residueCounts"
+          :width="logoWidth"
+          :height="160"
+        />
+      </div>
+    </template>
+    <div v-else class="no-data">No sequence data available</div>
   </div>
-  <div v-else class="no-data">No sequence data available</div>
 </template>
 
 <style scoped>
@@ -80,6 +98,10 @@ watch(
   font-size: 20px;
   font-weight: 500;
   line-height: 24px;
+}
+
+.peptide-length-dropdown {
+  width: 200px;
 }
 
 .logo-area {

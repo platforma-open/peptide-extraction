@@ -38,6 +38,8 @@ export type BlockData = {
   maxIndels?: number;
   autoR1OnlyAssembly?: boolean;
   filterInvalidPeptides?: boolean;
+  // No-UMI runs only: drop variants observed in only one read.
+  removeReadSingletons?: boolean;
   /** Mirrored from the `inputIsPairedEnd` model output by the UI so `.args()`
    *  can validate the pattern shape against the input. `undefined` means
    *  pairedness is not (yet) known — the cross-check is skipped in that case. */
@@ -61,6 +63,7 @@ const dataModel = new DataModelBuilder().from<BlockData>("v1").init(() => ({
   maxIndels: 1,
   autoR1OnlyAssembly: true,
   filterInvalidPeptides: true,
+  removeReadSingletons: true,
   qcTableState: createPlDataTableStateV2(),
   resultsTableState: createPlDataTableStateV2(),
   useWildcards: true,
@@ -83,6 +86,8 @@ export const platforma = BlockModelV3.create(dataModel)
   })
 
   .output("started", (ctx) => ctx.outputs !== undefined)
+
+  .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
   .output("stepLogs", (ctx) => {
     return ctx.outputs !== undefined
@@ -182,9 +187,9 @@ export const platforma = BlockModelV3.create(dataModel)
       ?.getFileHandle();
   })
 
-  .output("aaSequences", (ctx) => {
+  .output("seqLogo", (ctx) => {
     return ctx.outputs
-      ?.resolve({ field: "aaSequences", assertFieldType: "Input", allowPermanentAbsence: true })
+      ?.resolve({ field: "seqLogo", assertFieldType: "Input", allowPermanentAbsence: true })
       ?.getFileHandle();
   })
 
@@ -347,6 +352,7 @@ export const platforma = BlockModelV3.create(dataModel)
       maxIndels: data.maxIndels,
       autoR1OnlyAssembly: data.autoR1OnlyAssembly,
       filterInvalidPeptides: data.filterInvalidPeptides ?? true,
+      removeReadSingletons: data.removeReadSingletons ?? true,
       stopCodonTypes: data.stopCodonTypes,
       stopCodonReplacements: data.stopCodonReplacements,
       perProcessMemGB: data.perProcessMemGB,

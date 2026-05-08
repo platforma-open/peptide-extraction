@@ -1,0 +1,290 @@
+// Per-sample QC computation.
+//
+// Runs once per sampleId (fanned out by processColumn from main.tpl.tengo).
+// Reads this sample's peptide table — which already carries the per-peptide
+// validity columns (aaSeqPeptide, lengths, hasTrailingNucleotides,
+// hasEarlyStopCodon) emitted by downstream-pipeline.tpl.tengo — and emits five
+// small NDJSON/TSV files. The merge step (compute-qc.tpl.tengo) concatenates
+// these across samples.
+//
+// Earlier versions sampleDf against the cross-sample propertiesFile here, which
+// loaded a huge hash table per worker × 6 parallel workers and OOM'd large
+// runs. With validity now per-sample, no propertiesFile read is needed at all.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+units := import("@platforma-sdk/workflow-tengo:units")
+
+self.defineOutputs(
+	"qcRow", "propertyChecks", "aaComposition", "seqLogo", "lengthDist"
+)
+
+aminoAcids := ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L",
+	"M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
+
+self.body(func(inputs) {
+	sampleFile := inputs[pConstants.VALUE_FIELD_NAME]
+	key := inputs[pConstants.KEY_FIELD_NAME]
+	sampleId := key[0]
+
+	hasUmi := inputs.hasUmi
+	filterInvalid := inputs.filterInvalidPeptides
+	ll.assert(!is_undefined(inputs.maxPeptideLength), "maxPeptideLength input is required")
+	maxLogoPositions := inputs.maxPeptideLength.getDataAsJson().maxLen
+	if is_undefined(maxLogoPositions) {
+		maxLogoPositions = 0
+	}
+
+	abundanceCol := "readCount"
+	if hasUmi {
+		abundanceCol = "uniqueMoleculeCount"
+	}
+
+	// Reusable predicate for "valid peptide" — neither trailing nucleotides
+	// nor an early stop codon. Applied to the seq logo, AA composition.
+	validPeptideFilter := pt.col("hasTrailingNucleotides").not().and(pt.col("hasEarlyStopCodon").not())
+
+	wf := pt.workflow().mem(2 * units.GiB).cpu(1)
+
+	// Per-sample table
+	sampleDf := wf.frame({
+		file: sampleFile,
+		xsvType: "parquet"
+	}, {
+		id: "sample"
+	})
+
+	// Filtered base reused by AA composition, seq-logo, and length distributions.
+	validBase := sampleDf.filter(pt.col("aaLengthPeptide").gt(pt.lit(0)))
+	if filterInvalid {
+		validBase = validBase.filter(validPeptideFilter)
+	}
+
+	// --- 1. QC stats (one row) ---------------------------------------------
+	qcSelectExprs := [
+		pt.lit(sampleId).alias("sampleId"),
+		pt.col("readCount").sum().alias("totalReads"),
+		pt.col("variantKey").count().alias("uniquePeptides"),
+		pt.col("aaLengthPeptide").mean().alias("avgLengthAa"),
+		pt.col("ntLengthPeptide").mean().alias("avgLengthNt"),
+		pt.col("hasTrailingNucleotides").cast("Int").sum().alias("hasTrailingNucleotides"),
+		pt.col("hasEarlyStopCodon").cast("Int").sum().alias("hasEarlyStopCodon")
+	]
+	if hasUmi {
+		qcSelectExprs = append(qcSelectExprs,
+			pt.col("uniqueMoleculeCount").sum().alias("totalUMIs")
+		)
+	}
+	qcRow := sampleDf.select(qcSelectExprs...)
+
+	// Derive reads-per-UMI
+	if hasUmi {
+		qcRow = qcRow.withColumns(
+			pt.col("totalReads").cast("Double").truediv(
+				pt.col("totalUMIs").cast("Double")
+			).alias("readsPerUmi")
+		)
+	}
+	qcRow.save("qcRow.ndjson")
+
+	// --- 2. Abundance-weighted property checks (two rows) -----------------
+	// Abundance-weighted invalid-peptide rates: fraction of the abundance
+	// whose peptide has each flag set. Weight by UMI count when available,
+	// otherwise by read count.
+	// Concatenated into qc-checks.ndjson by the merge step.
+	// TODO: calibrate thresholds (5% / 15%)
+	ratesDf := sampleDf.select(
+		pt.lit(sampleId).alias("sampleId"),
+		pt.col(abundanceCol).cast("Double").sum().alias("_totalAbundance"),
+		pt.when(pt.col("hasTrailingNucleotides")).
+			then(pt.col(abundanceCol).cast("Double")).
+			otherwise(pt.lit(0.0)).
+			sum().
+			alias("_abundanceTrailing"),
+		pt.when(pt.col("hasEarlyStopCodon")).
+			then(pt.col(abundanceCol).cast("Double")).
+			otherwise(pt.lit(0.0)).
+			sum().
+			alias("_abundanceStop")
+	).withColumns(
+		pt.when(pt.col("_totalAbundance").gt(pt.lit(0.0))).
+			then(pt.col("_abundanceTrailing").truediv(pt.col("_totalAbundance"))).
+			otherwise(pt.lit(0.0)).
+			alias("trailingRate"),
+		pt.when(pt.col("_totalAbundance").gt(pt.lit(0.0))).
+			then(pt.col("_abundanceStop").truediv(pt.col("_totalAbundance"))).
+			otherwise(pt.lit(0.0)).
+			alias("stopRate")
+	)
+
+	trailingStatus := pt.when(pt.col("trailingRate").le(pt.lit(0.05))).
+		then(pt.lit("OK")).
+		otherwise(
+			pt.when(pt.col("trailingRate").le(pt.lit(0.15))).
+				then(pt.lit("WARN")).
+				otherwise(pt.lit("ALERT"))
+		)
+
+	stopStatus := pt.when(pt.col("stopRate").le(pt.lit(0.05))).
+		then(pt.lit("OK")).
+		otherwise(
+			pt.when(pt.col("stopRate").le(pt.lit(0.15))).
+				then(pt.lit("WARN")).
+				otherwise(pt.lit("ALERT"))
+		)
+
+	trailingCheckRow := ratesDf.select(
+		pt.lit("properties").alias("step"),
+		trailingStatus.alias("status"),
+		pt.lit("TrailingNucleotidesRate").alias("checkType"),
+		pt.lit("Trailing nucleotides rate").alias("label"),
+		pt.lit("").alias("printedValue"),
+		pt.col("trailingRate").alias("value"),
+		pt.lit(0.05).alias("upper"),
+		pt.lit(0.15).alias("middle"),
+		pt.lit(60).cast("Long").alias("sortOrder"),
+		pt.col("sampleId")
+	)
+
+	stopCheckRow := ratesDf.select(
+		pt.lit("properties").alias("step"),
+		stopStatus.alias("status"),
+		pt.lit("EarlyStopCodonRate").alias("checkType"),
+		pt.lit("Early stop codon rate").alias("label"),
+		pt.lit("").alias("printedValue"),
+		pt.col("stopRate").alias("value"),
+		pt.lit(0.05).alias("upper"),
+		pt.lit(0.15).alias("middle"),
+		pt.lit(70).cast("Long").alias("sortOrder"),
+		pt.col("sampleId")
+	)
+
+	pt.concat([trailingCheckRow, stopCheckRow]).save("propertyChecks.ndjson")
+
+	// --- 3. AA composition (one row, sampleId + A..Y percentages) ---------
+	// Per-sample AA composition: weighted by abundance.
+	// Formula: comp_AA = sum(countOf(AA) * abundance) / sum(seqLen * abundance) * 100
+	// Weight by abundance (UMI count if present, otherwise by read count).
+	//
+	// Two passes: pt's `.sum()` returns a WindowExpression which can't be
+	// composed with comparison or arithmetic ops. Materialize raw weighted
+	// counts first, then divide via `pt.col(...)` references in a second
+	// select.
+
+	// First pass: aggregate raw weighted counts + total weighted length.
+	rawExprs := [
+		pt.lit(sampleId).alias("sampleId"),
+		pt.col("aaSeqPeptide").strLenChars().cast("Double").multiply(
+			pt.col(abundanceCol).cast("Double")
+		).sum().alias("_totalLen")
+	]
+	for aa in aminoAcids {
+		rawExprs = append(rawExprs,
+			pt.col("aaSeqPeptide").strCountMatches(aa, {literal: true}).cast("Double").multiply(
+				pt.col(abundanceCol).cast("Double")
+			).sum().alias("_cnt_" + aa)
+		)
+	}
+	compRaw := validBase.select(rawExprs...)
+
+	// Second pass: compute percentages
+	pctExprs := [pt.col("sampleId")]
+	for aa in aminoAcids {
+		pctExprs = append(pctExprs,
+			pt.when(pt.col("_totalLen").gt(pt.lit(0.0))).then(
+				pt.col("_cnt_" + aa).truediv(pt.col("_totalLen")).multiply(pt.lit(100.0))
+			).otherwise(pt.lit(0.0)).alias(aa)
+		)
+	}
+	compRaw.select(pctExprs...).save("aaComposition.ndjson")
+
+	// --- 4. Seq-logo: per (aaLength, position, residue) counts -------------
+	// Per-sample seq-logo residue counts: per (aaLength, position, residue).
+	// Buckets with fewer than MIN_LOGO_PEPTIDES unique peptides are excluded.
+	MIN_LOGO_PEPTIDES := 10
+	seqBase := validBase.withColumns(
+		pt.col("aaLengthPeptide").count().over("aaLengthPeptide").alias("_bucketSize")
+	).filter(pt.col("_bucketSize").ge(pt.lit(MIN_LOGO_PEPTIDES)))
+
+	posFrames := []
+	i := 0
+	for i < maxLogoPositions {
+		posFrame := seqBase.
+			filter(pt.col("aaLengthPeptide").gt(pt.lit(i))).
+			withColumns(
+				pt.col("aaSeqPeptide").strSlice(i, {length: 1}).alias("_residue")
+			).
+			groupBy("aaLengthPeptide", "_residue").
+			agg(pt.col("aaLengthPeptide").count().alias("count")).
+			select(
+				pt.lit(sampleId).alias("sampleId"),
+				pt.col("aaLengthPeptide").alias("aaLength"),
+				pt.lit(i).alias("position"),
+				pt.col("_residue").alias("residue"),
+				pt.col("count")
+			)
+		posFrames = append(posFrames, posFrame)
+		i++
+	}
+	if len(posFrames) == 0 {
+		// No valid peptides in this sample — emit a 0-row NDJSON with the
+		// expected schema so the merge step can still concat it cleanly.
+		seqBase.
+			select(
+				pt.lit(sampleId).alias("sampleId"),
+				pt.col("aaLengthPeptide").alias("aaLength"),
+				pt.col("aaLengthPeptide").alias("position"),
+				pt.col("aaSeqPeptide").strSlice(0, {length: 1}).alias("residue"),
+				pt.col("aaLengthPeptide").cast("Long").alias("count")
+			).
+			filter(pt.lit(false)).
+			save("seqLogo.ndjson")
+	} else if len(posFrames) == 1 {
+		posFrames[0].save("seqLogo.ndjson")
+	} else {
+		pt.concat(posFrames).save("seqLogo.ndjson")
+	}
+
+	// --- 5. Length distributions (AA + NT) --------------------------------
+	// Per-sample peptide length distributions (AA and NT).
+	// validBase already restricts to rows with a valid peptide (and applies
+	// filterInvalidPeptides if enabled), so this is just group-by + count.
+	lengthFrames := []
+	for lenCol in ["aaLengthPeptide", "ntLengthPeptide"] {
+		distName := "aa_length"
+		if lenCol == "ntLengthPeptide" {
+			distName = "nt_length"
+		}
+		lenDf := validBase.groupBy(lenCol).agg(
+			pt.col(lenCol).count().alias("count")
+		).withColumns(
+			pt.col(lenCol).cast("String").alias("bin"),
+			pt.lit(sampleId).alias("sampleId"),
+			pt.lit(distName).alias("dist"),
+			pt.col("count").cast("Long").alias("count"),
+			pt.col("count").cast("Double").truediv(
+				pt.col("count").cast("Double").sum()
+			).multiply(pt.lit(100.0)).alias("pct")
+		).select(
+			pt.col("dist"),
+			pt.col("bin"),
+			pt.col("count"),
+			pt.col("pct"),
+			pt.col("sampleId")
+		)
+		lengthFrames = append(lengthFrames, lenDf)
+	}
+	pt.concat(lengthFrames).save("lengthDist.ndjson")
+
+	result := wf.run()
+
+	return {
+		qcRow: result.getFile("qcRow.ndjson"),
+		propertyChecks: result.getFile("propertyChecks.ndjson"),
+		aaComposition: result.getFile("aaComposition.ndjson"),
+		seqLogo: result.getFile("seqLogo.ndjson"),
+		lengthDist: result.getFile("lengthDist.ndjson")
+	}
+})
