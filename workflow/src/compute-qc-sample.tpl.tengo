@@ -87,7 +87,7 @@ self.body(func(inputs) {
 			).alias("readsPerUmi")
 		)
 	}
-	qcRow.save("qcRow.ndjson")
+	qcRow.save("qcRow.parquet")
 
 	// --- 2. Abundance-weighted property checks (two rows) -----------------
 	// Abundance-weighted invalid-peptide rates: fraction of the abundance
@@ -161,7 +161,7 @@ self.body(func(inputs) {
 		pt.col("sampleId")
 	)
 
-	pt.concat([trailingCheckRow, stopCheckRow]).save("propertyChecks.ndjson")
+	pt.concat([trailingCheckRow, stopCheckRow]).save("propertyChecks.parquet")
 
 	// --- 3. AA composition (one row, sampleId + A..Y percentages) ---------
 	// Per-sample AA composition: weighted by abundance.
@@ -198,7 +198,7 @@ self.body(func(inputs) {
 			).otherwise(pt.lit(0.0)).alias(aa)
 		)
 	}
-	compRaw.select(pctExprs...).save("aaComposition.ndjson")
+	compRaw.select(pctExprs...).save("aaComposition.parquet")
 
 	// --- 4. Seq-logo: per (aaLength, position, residue) counts -------------
 	// Per-sample seq-logo residue counts: per (aaLength, position, residue).
@@ -229,7 +229,7 @@ self.body(func(inputs) {
 		i++
 	}
 	if len(posFrames) == 0 {
-		// No valid peptides in this sample — emit a 0-row NDJSON with the
+		// No valid peptides in this sample — emit a 0-row parquet with the
 		// expected schema so the merge step can still concat it cleanly.
 		seqBase.
 			select(
@@ -240,11 +240,11 @@ self.body(func(inputs) {
 				pt.col("aaLengthPeptide").cast("Long").alias("count")
 			).
 			filter(pt.lit(false)).
-			save("seqLogo.ndjson")
+			save("seqLogo.parquet")
 	} else if len(posFrames) == 1 {
-		posFrames[0].save("seqLogo.ndjson")
+		posFrames[0].save("seqLogo.parquet")
 	} else {
-		pt.concat(posFrames).save("seqLogo.ndjson")
+		pt.concat(posFrames).save("seqLogo.parquet")
 	}
 
 	// --- 5. Length distributions (AA + NT) --------------------------------
@@ -276,15 +276,15 @@ self.body(func(inputs) {
 		)
 		lengthFrames = append(lengthFrames, lenDf)
 	}
-	pt.concat(lengthFrames).save("lengthDist.ndjson")
+	pt.concat(lengthFrames).save("lengthDist.parquet")
 
 	result := wf.run()
 
 	return {
-		qcRow: result.getFile("qcRow.ndjson"),
-		propertyChecks: result.getFile("propertyChecks.ndjson"),
-		aaComposition: result.getFile("aaComposition.ndjson"),
-		seqLogo: result.getFile("seqLogo.ndjson"),
-		lengthDist: result.getFile("lengthDist.ndjson")
+		qcRow: result.getFile("qcRow.parquet"),
+		propertyChecks: result.getFile("propertyChecks.parquet"),
+		aaComposition: result.getFile("aaComposition.parquet"),
+		seqLogo: result.getFile("seqLogo.parquet"),
+		lengthDist: result.getFile("lengthDist.parquet")
 	}
 })

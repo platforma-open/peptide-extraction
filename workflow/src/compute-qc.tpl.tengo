@@ -58,18 +58,18 @@ self.body(func(inputs) {
 		merged.sort(sortKeys).save(outputFile)
 	}
 
-	qcRowFrames := loadFrames(inputs.qcRowsData, "qcRow", "ndjson", false)
+	qcRowFrames := loadFrames(inputs.qcRowsData, "qcRow", "parquet", false)
 	concatAndSave(qcRowFrames, ["sampleId"], "qc.tsv")
 
-	aaCompFrames := loadFrames(inputs.aaCompositionData, "aaComp", "ndjson", false)
+	aaCompFrames := loadFrames(inputs.aaCompositionData, "aaComp", "parquet", false)
 	concatAndSave(aaCompFrames, ["sampleId"], "aa-composition.ndjson")
 
-	seqLogoFrames := loadFrames(inputs.seqLogoData, "seqLogo", "ndjson", false)
+	seqLogoFrames := loadFrames(inputs.seqLogoData, "seqLogo", "parquet", false)
 	concatAndSave(seqLogoFrames, ["sampleId", "aaLength", "position"], "seq-logo.ndjson")
 
-	// qc-checks: per-sample property checks (with sampleId) + per-sample
-	// Python qc_checks.ndjson (sampleId added on load).
-	propertyCheckFrames := loadFrames(inputs.propertyChecksData, "propChecks", "ndjson", false)
+	// qc-checks: per-sample property checks (parquet, with sampleId) +
+	// per-sample Python qc_checks.ndjson (sampleId added on load).
+	propertyCheckFrames := loadFrames(inputs.propertyChecksData, "propChecks", "parquet", false)
 	qcChecksFrames := loadFrames(inputs.qcChecksData, "qcChecks", "ndjson", true)
 	allCheckFrames := propertyCheckFrames + qcChecksFrames
 	if len(allCheckFrames) > 0 {
@@ -81,9 +81,10 @@ self.body(func(inputs) {
 		concatAndSave(funnelFrames, ["sampleId"], "pipeline-funnel.ndjson")
 	}
 
-	// distributions: per-sample length distributions (with sampleId, dist) +
-	// per-sample distributions.ndjson from the Python pipeline (sampleId added).
-	lengthDistFrames := loadFrames(inputs.lengthDistData, "lenDist", "ndjson", false)
+	// distributions: per-sample length distributions (parquet, with sampleId,
+	// dist) + per-sample distributions.ndjson from the Python pipeline
+	// (sampleId added).
+	lengthDistFrames := loadFrames(inputs.lengthDistData, "lenDist", "parquet", false)
 	distFrames := loadFrames(inputs.distributionsData, "dist", "ndjson", true)
 	allDistFrames := distFrames + lengthDistFrames
 	if len(allDistFrames) > 0 {

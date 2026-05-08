@@ -272,7 +272,7 @@ self.body(func(inputs) {
 	if hasAnyUmi {
 		collapsed = df.groupBy(r1InsertName).agg(
 			pt.col(r1InsertName).count().alias("uniqueMoleculeCount"),
-			pt.col("count").sum().alias("readCount")
+			pt.col("totalWeight").cast("Long").sum().alias("readCount")
 		).select(
 			pt.col(r1InsertName).alias("variantKey"),
 			pt.col("uniqueMoleculeCount"),
