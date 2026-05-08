@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.peptide-profiling.workflow
 
+## 1.1.1
+
+### Patch Changes
+
+- d2a520c: Refactor and get ready for users
+
 ## 1.1.0
 
 ### Minor Changes
