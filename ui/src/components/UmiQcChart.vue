@@ -6,8 +6,8 @@
 import { PlAccordionSection } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../app";
-import type { DistBin, SampleDistributions } from "../distributions";
-import { buildDistLabels } from "../distributions";
+import type { SampleDistributions } from "../distributions";
+import { buildChart, buildDistLabels } from "../distributions";
 import DistributionBars from "./DistributionBars.vue";
 
 const props = defineProps<{
@@ -26,31 +26,14 @@ const labels = computed(() => {
   );
 });
 
-type ChartData = {
-  name: string;
-  label: string;
-  bins: (DistBin & { widthPct: number })[];
-};
-
-function buildChart(dists: SampleDistributions, name: string): ChartData | undefined {
-  const bins = dists[name];
-  if (!bins?.length) return undefined;
-  const maxPct = Math.max(...bins.map((b) => b.pct), 0.01);
-  return {
-    name,
-    label: labels.value[name] ?? name,
-    bins: bins.map((b) => ({ ...b, widthPct: (b.pct / maxPct) * 100 })),
-  };
-}
-
 const readsPerUmi = computed(() =>
-  props.distributions ? buildChart(props.distributions, "reads_per_umi") : undefined,
+  props.distributions ? buildChart(props.distributions, "reads_per_umi", labels.value) : undefined,
 );
 const umiLength = computed(() =>
-  props.distributions ? buildChart(props.distributions, "umi_length") : undefined,
+  props.distributions ? buildChart(props.distributions, "umi_length", labels.value) : undefined,
 );
 const umi2Length = computed(() =>
-  props.distributions ? buildChart(props.distributions, "umi2_length") : undefined,
+  props.distributions ? buildChart(props.distributions, "umi2_length", labels.value) : undefined,
 );
 const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
 

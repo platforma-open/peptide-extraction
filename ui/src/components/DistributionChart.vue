@@ -7,8 +7,8 @@ import type { SimpleOption } from "@platforma-sdk/ui-vue";
 import { PlAccordionSection, PlBtnGroup } from "@platforma-sdk/ui-vue";
 import { computed, ref } from "vue";
 import { useApp } from "../app";
-import type { DistBin, SampleDistributions } from "../distributions";
-import { buildDistLabels } from "../distributions";
+import type { SampleDistributions } from "../distributions";
+import { buildChart, buildDistLabels } from "../distributions";
 import DistributionBars from "./DistributionBars.vue";
 
 type LengthUnit = "aa" | "nt";
@@ -34,45 +34,27 @@ const labels = computed(() => {
   );
 });
 
-type ChartData = {
-  name: string;
-  label: string;
-  bins: (DistBin & { widthPct: number })[];
-};
-
-function buildChart(
-  dists: SampleDistributions,
-  name: string,
-  sortNumeric = false,
-): ChartData | undefined {
-  const bins = dists[name];
-  if (!bins?.length) return undefined;
-  const sorted = sortNumeric ? [...bins].sort((a, b) => Number(a.bin) - Number(b.bin)) : bins;
-  const maxPct = Math.max(...sorted.map((b) => b.pct), 0.01);
-  return {
-    name,
-    label: labels.value[name] ?? name,
-    bins: sorted.map((b) => ({ ...b, widthPct: (b.pct / maxPct) * 100 })),
-  };
-}
-
 const peptideLength = computed(() => {
   if (!props.distributions) return undefined;
   const distName = lengthUnit.value === "aa" ? "aa_length" : "nt_length";
-  return buildChart(props.distributions, distName, true);
+  return buildChart(props.distributions, distName, labels.value, true);
 });
 
 const r1Extracted = computed(() =>
-  props.distributions ? buildChart(props.distributions, "r1_length") : undefined,
+  props.distributions ? buildChart(props.distributions, "r1_length", labels.value) : undefined,
 );
 const r2Extracted = computed(() =>
-  props.distributions ? buildChart(props.distributions, "r2_length") : undefined,
+  props.distributions ? buildChart(props.distributions, "r2_length", labels.value) : undefined,
 );
 const r1Consensus = computed(() =>
-  props.distributions ? buildChart(props.distributions, "consensus_r1_length") : undefined,
+  props.distributions
+    ? buildChart(props.distributions, "consensus_r1_length", labels.value)
+    : undefined,
 );
 const r2Consensus = computed(() =>
-  props.distributions ? buildChart(props.distributions, "consensus_r2_length") : undefined,
+  props.distributions
+    ? buildChart(props.distributions, "consensus_r2_length", labels.value)
+    : undefined,
 );
 const hasSequenceLengths = computed(
   () => r1Extracted.value || r2Extracted.value || r1Consensus.value || r2Consensus.value,

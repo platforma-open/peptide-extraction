@@ -31,6 +31,32 @@ export function buildDistLabels(
   };
 }
 
+export type ChartData = {
+  name: string;
+  label: string;
+  bins: (DistBin & { widthPct: number })[];
+};
+
+/** Shape a named distribution into a renderable chart: pick bins, optionally
+ *  sort numerically, scale widths against the largest pct. Labels are supplied
+ *  by the caller so each consumer can build them from its own pattern context. */
+export function buildChart(
+  dists: SampleDistributions,
+  name: string,
+  labels: Record<string, string>,
+  sortNumeric = false,
+): ChartData | undefined {
+  const bins = dists[name];
+  if (!bins?.length) return undefined;
+  const sorted = sortNumeric ? [...bins].sort((a, b) => Number(a.bin) - Number(b.bin)) : bins;
+  const maxPct = Math.max(...sorted.map((b) => b.pct), 0.01);
+  return {
+    name,
+    label: labels[name] ?? name,
+    bins: sorted.map((b) => ({ ...b, widthPct: (b.pct / maxPct) * 100 })),
+  };
+}
+
 /** Parse merged distributions NDJSON into a map: sampleId -> { distName -> bins[] } */
 export function parseDistributionsNdjson(content: string): Map<string, SampleDistributions> {
   const map = new Map<string, SampleDistributions>();

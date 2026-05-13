@@ -338,7 +338,7 @@ export const platforma = BlockModelV3.create(dataModel)
     const hasUmi = patternParts.r1.umi !== undefined || patternParts.r2?.umi !== undefined;
     if (hasUmi) {
       const missing: string[] = [];
-      if (data.minReadsPerConsensus === undefined) missing.push("Min reads per UMI group");
+      if (data.minReadsPerConsensus === undefined) missing.push("Min reads per UMI");
       if (data.maxIndels === undefined) missing.push("Max UMI indels");
       if (data.minUmiQuality === undefined) missing.push("Min UMI quality");
       if (missing.length > 0) {
