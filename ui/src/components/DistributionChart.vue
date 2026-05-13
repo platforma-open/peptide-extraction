@@ -2,7 +2,6 @@
 // Renders per-sample distributions organized in sections:
 // 0. Peptide Length (AA / NT toggle)
 // 1. Peptide Sequence Lengths (R1/R2 parsed + consensus, two-column)
-// 2. UMI Lengths (side by side, only if present)
 
 import type { SimpleOption } from "@platforma-sdk/ui-vue";
 import { PlAccordionSection, PlBtnGroup } from "@platforma-sdk/ui-vue";
@@ -10,6 +9,7 @@ import { computed, ref } from "vue";
 import { useApp } from "../app";
 import type { DistBin, SampleDistributions } from "../distributions";
 import { buildDistLabels } from "../distributions";
+import DistributionBars from "./DistributionBars.vue";
 
 type LengthUnit = "aa" | "nt";
 const lengthUnit = ref<LengthUnit>("aa");
@@ -77,14 +77,6 @@ const r2Consensus = computed(() =>
 const hasSequenceLengths = computed(
   () => r1Extracted.value || r2Extracted.value || r1Consensus.value || r2Consensus.value,
 );
-
-const umiLength = computed(() =>
-  props.distributions ? buildChart(props.distributions, "umi_length") : undefined,
-);
-const umi2Length = computed(() =>
-  props.distributions ? buildChart(props.distributions, "umi2_length") : undefined,
-);
-const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
 </script>
 
 <template>
@@ -95,25 +87,13 @@ const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
         <div class="dist-section-title">Peptide Length</div>
         <PlBtnGroup v-model="lengthUnit" :options="lengthUnitOptions" :compact="true" />
       </div>
-      <div v-if="peptideLength" class="dist-bars">
-        <div v-for="bin in peptideLength.bins" :key="bin.bin" class="dist-row">
-          <div class="dist-bin-label">{{ bin.bin }}</div>
-          <div class="dist-bar-track">
-            <div
-              class="dist-bar-fill"
-              :style="{ width: bin.widthPct + '%' }"
-              :title="`${bin.count.toLocaleString()} (${bin.pct.toFixed(1)}%)`"
-            />
-          </div>
-          <div class="dist-pct">{{ bin.pct.toFixed(1) }}%</div>
-        </div>
-      </div>
+      <DistributionBars v-if="peptideLength" :bins="peptideLength.bins" />
       <div v-else class="dist-no-data">No data available</div>
     </div>
 
-    <!-- Advanced results: Peptide Insert Lengths + UMI Lengths -->
-    <PlAccordionSection v-if="hasSequenceLengths || hasUmiLengths" label="Advanced results">
-      <div v-if="hasSequenceLengths" class="dist-section">
+    <!-- Advanced results: Peptide Insert Lengths -->
+    <PlAccordionSection v-if="hasSequenceLengths" label="Advanced results">
+      <div class="dist-section">
         <div class="dist-section-title">Peptide Insert Lengths</div>
         <div class="dist-section-desc">
           Peptide insert length before and after the pipeline builds one consensus sequence per
@@ -124,37 +104,13 @@ const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
           <div v-if="r1Extracted" class="dist-col">
             <div class="dist-title">{{ r1Extracted.label }}</div>
             <div class="dist-chart-area">
-              <div class="dist-bars">
-                <div v-for="bin in r1Extracted.bins" :key="bin.bin" class="dist-row">
-                  <div class="dist-bin-label">{{ bin.bin }}</div>
-                  <div class="dist-bar-track">
-                    <div
-                      class="dist-bar-fill"
-                      :style="{ width: bin.widthPct + '%' }"
-                      :title="`${bin.count.toLocaleString()} (${bin.pct}%)`"
-                    />
-                  </div>
-                  <div class="dist-pct">{{ bin.pct }}%</div>
-                </div>
-              </div>
+              <DistributionBars :bins="r1Extracted.bins" />
             </div>
           </div>
           <div v-if="r2Extracted" class="dist-col">
             <div class="dist-title">{{ r2Extracted.label }}</div>
             <div class="dist-chart-area">
-              <div class="dist-bars">
-                <div v-for="bin in r2Extracted.bins" :key="bin.bin" class="dist-row">
-                  <div class="dist-bin-label">{{ bin.bin }}</div>
-                  <div class="dist-bar-track">
-                    <div
-                      class="dist-bar-fill"
-                      :style="{ width: bin.widthPct + '%' }"
-                      :title="`${bin.count.toLocaleString()} (${bin.pct}%)`"
-                    />
-                  </div>
-                  <div class="dist-pct">{{ bin.pct }}%</div>
-                </div>
-              </div>
+              <DistributionBars :bins="r2Extracted.bins" />
             </div>
           </div>
         </div>
@@ -163,83 +119,13 @@ const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
           <div v-if="r1Consensus" class="dist-col">
             <div class="dist-title">{{ r1Consensus.label }}</div>
             <div class="dist-chart-area">
-              <div class="dist-bars">
-                <div v-for="bin in r1Consensus.bins" :key="bin.bin" class="dist-row">
-                  <div class="dist-bin-label">{{ bin.bin }}</div>
-                  <div class="dist-bar-track">
-                    <div
-                      class="dist-bar-fill"
-                      :style="{ width: bin.widthPct + '%' }"
-                      :title="`${bin.count.toLocaleString()} (${bin.pct}%)`"
-                    />
-                  </div>
-                  <div class="dist-pct">{{ bin.pct }}%</div>
-                </div>
-              </div>
+              <DistributionBars :bins="r1Consensus.bins" />
             </div>
           </div>
           <div v-if="r2Consensus" class="dist-col">
             <div class="dist-title">{{ r2Consensus.label }}</div>
             <div class="dist-chart-area">
-              <div class="dist-bars">
-                <div v-for="bin in r2Consensus.bins" :key="bin.bin" class="dist-row">
-                  <div class="dist-bin-label">{{ bin.bin }}</div>
-                  <div class="dist-bar-track">
-                    <div
-                      class="dist-bar-fill"
-                      :style="{ width: bin.widthPct + '%' }"
-                      :title="`${bin.count.toLocaleString()} (${bin.pct}%)`"
-                    />
-                  </div>
-                  <div class="dist-pct">{{ bin.pct }}%</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="hasUmiLengths" class="dist-section">
-        <div class="dist-section-title">UMI Lengths</div>
-        <div class="dist-section-desc">
-          Length of the UMI molecular barcode extracted from each read. A range of lengths is
-          expected when the UMI design allows variable length.
-        </div>
-        <div class="dist-pair">
-          <div v-if="umiLength" class="dist-col">
-            <div class="dist-title">{{ umiLength.label }}</div>
-            <div class="dist-chart-area">
-              <div class="dist-bars">
-                <div v-for="bin in umiLength.bins" :key="bin.bin" class="dist-row">
-                  <div class="dist-bin-label">{{ bin.bin }}</div>
-                  <div class="dist-bar-track">
-                    <div
-                      class="dist-bar-fill"
-                      :style="{ width: bin.widthPct + '%' }"
-                      :title="`${bin.count.toLocaleString()} (${bin.pct}%)`"
-                    />
-                  </div>
-                  <div class="dist-pct">{{ bin.pct }}%</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div v-if="umi2Length" class="dist-col">
-            <div class="dist-title">{{ umi2Length.label }}</div>
-            <div class="dist-chart-area">
-              <div class="dist-bars">
-                <div v-for="bin in umi2Length.bins" :key="bin.bin" class="dist-row">
-                  <div class="dist-bin-label">{{ bin.bin }}</div>
-                  <div class="dist-bar-track">
-                    <div
-                      class="dist-bar-fill"
-                      :style="{ width: bin.widthPct + '%' }"
-                      :title="`${bin.count.toLocaleString()} (${bin.pct}%)`"
-                    />
-                  </div>
-                  <div class="dist-pct">{{ bin.pct }}%</div>
-                </div>
-              </div>
+              <DistributionBars :bins="r2Consensus.bins" />
             </div>
           </div>
         </div>
@@ -288,11 +174,6 @@ const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
   margin-top: 8px;
 }
 
-.dist-single {
-  max-width: 50%;
-  margin-top: 8px;
-}
-
 .dist-col {
   display: flex;
   flex-direction: column;
@@ -313,53 +194,6 @@ const hasUmiLengths = computed(() => umiLength.value || umi2Length.value);
 .dist-chart-area {
   display: flex;
   flex-direction: row;
-}
-
-.dist-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  flex: 1;
-  min-width: 0;
-}
-
-.dist-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dist-bin-label {
-  font-size: 11px;
-  font-family: monospace;
-  color: var(--color-txt-02);
-  width: 50px;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.dist-bar-track {
-  flex: 1;
-  height: 14px;
-  background: var(--bg-base-light, #f0f0f0);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.dist-bar-fill {
-  height: 100%;
-  background: #4a90d9;
-  border-radius: 3px;
-  transition: width 0.2s ease;
-  min-width: 1px;
-}
-
-.dist-pct {
-  font-size: 11px;
-  color: var(--color-txt-03);
-  width: 45px;
-  text-align: right;
-  flex-shrink: 0;
 }
 
 .dist-no-data {

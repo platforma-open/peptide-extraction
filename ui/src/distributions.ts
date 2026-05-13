@@ -27,6 +27,7 @@ export function buildDistLabels(
     umi2_length: `${umi2} — molecular barcode`,
     consensus_r1_length: `Read 1 insert length (${r1}) — after UMI consensus`,
     consensus_r2_length: `Read 2 insert length (${r2}) — after UMI consensus`,
+    reads_per_umi: "Reads per UMI molecule",
   };
 }
 
