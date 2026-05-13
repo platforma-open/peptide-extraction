@@ -139,22 +139,45 @@ const hasUmi = computed(() => {
     <div v-if="hasUmi" style="display: flex; gap: 12px">
       <PlNumberField
         v-model="app.model.data.minReadsPerConsensus"
-        label="Min reads per UMI group"
+        label="Min reads per UMI"
         :min-value="1"
+        :error-message="app.model.data.minReadsPerConsensus === undefined ? 'Required' : undefined"
       >
         <template #tooltip>
           Minimum reads sharing a UMI. Required to accept it as a valid molecule. Higher values
           correct more sequencing errors but discard rare molecules — use <code>1</code> for very
           diverse libraries or low sequencing depth.<br /><br />
-          Rejected reads appear as <em>Insufficient UMI coverage</em> in the Peptide Recovery plot.
+          Default <code>2</code>. Rejected reads appear as <em>Insufficient UMI coverage</em> in the
+          Peptide Recovery plot.
         </template>
       </PlNumberField>
 
-      <PlNumberField v-model="app.model.data.maxIndels" label="Max UMI indels" :min-value="0">
+      <PlNumberField
+        v-model="app.model.data.maxIndels"
+        label="Max UMI indels"
+        :min-value="0"
+        :error-message="app.model.data.maxIndels === undefined ? 'Required' : undefined"
+      >
         <template #tooltip>
           Insertions/deletions tolerated when merging UMIs that likely come from the same molecule.
           Higher values recover more error-containing barcodes but may collapse genuinely different
-          molecules.
+          molecules.<br /><br />
+          Default <code>1</code>.
+        </template>
+      </PlNumberField>
+
+      <PlNumberField
+        v-model="app.model.data.minUmiQuality"
+        label="Min UMI quality"
+        :min-value="0"
+        :max-value="50"
+        :error-message="app.model.data.minUmiQuality === undefined ? 'Required' : undefined"
+      >
+        <template #tooltip>
+          Minimum Phred quality threshold for UMI bases. Raise to drop noisy UMIs; lower to keep
+          more reads in low-quality runs.<br /><br />
+          Default <code>20</code> (~1% per-base error). Try <code>12</code> for older or noisy
+          sequencing data.
         </template>
       </PlNumberField>
     </div>

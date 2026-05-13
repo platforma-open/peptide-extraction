@@ -30,6 +30,7 @@ self.body(func(inputs) {
 	r2InsertName := inputs.r2InsertName
 	maxIndels := inputs.maxIndels
 	minReadsPerConsensus := inputs.minReadsPerConsensus
+	minUmiQuality := inputs.minUmiQuality
 	mitoolCPUs := inputs.mitoolCPUs
 	mitoolMemGB := inputs.mitoolMemGB
 	isPairedEnd := inputs.isPairedEnd
@@ -54,6 +55,7 @@ self.body(func(inputs) {
 	refineCmd := refineBuilder.
 		arg("--substitution-rate").arg("0.00001").
 		arg("--max-indels").arg(string(maxIndels)).
+		arg("-q").arg(string(minUmiQuality)).
 		arg("--report").arg("refine_report.txt").
 		addFile("parsed.mic", parsedMic).
 		arg("parsed.mic").
