@@ -58,18 +58,23 @@ export const ProgressPrefix = "[==PROGRESS==]";
 export const ProgressPattern =
   /(?<stage>[^:]*):(?: *(?<progress>[0-9.]+)%)?(?: *ETA: *(?<eta>.+))?/;
 
-const dataModel = new DataModelBuilder().from<BlockData>("v1").init(() => ({
-  minReadsPerConsensus: 2,
-  minUmiQuality: 20,
-  errorBudget: 10,
-  maxIndels: 1,
-  autoR1OnlyAssembly: true,
-  filterInvalidPeptides: true,
-  removeReadSingletons: true,
-  qcTableState: createPlDataTableStateV2(),
-  resultsTableState: createPlDataTableStateV2(),
-  useWildcards: true,
-}));
+type BlockDataV1 = Omit<BlockData, "minUmiQuality">;
+
+const dataModel = new DataModelBuilder()
+  .from<BlockDataV1>("v1")
+  .migrate<BlockData>("v2", (v1) => ({ ...v1, minUmiQuality: 20 }))
+  .init(() => ({
+    minReadsPerConsensus: 2,
+    minUmiQuality: 20,
+    errorBudget: 10,
+    maxIndels: 1,
+    autoR1OnlyAssembly: true,
+    filterInvalidPeptides: true,
+    removeReadSingletons: true,
+    qcTableState: createPlDataTableStateV2(),
+    resultsTableState: createPlDataTableStateV2(),
+    useWildcards: true,
+  }));
 
 export const platforma = BlockModelV3.create(dataModel)
 
