@@ -9,13 +9,25 @@ export type DistBin = {
 
 export type SampleDistributions = Record<string, DistBin[]>;
 
-/** Build dynamic distribution labels using actual tag names from patternParts */
+// Known distribution names emitted by qc_checks.py. The frontend treats this
+export type DistName =
+  | "r1_length"
+  | "r2_length"
+  | "umi_length"
+  | "umi2_length"
+  | "consensus_r1_length"
+  | "consensus_r2_length"
+  | "reads_per_umi"
+  | "aa_length"
+  | "nt_length";
+
+// Build dynamic distribution labels using actual tag names from patternParts.
 export function buildDistLabels(
   r1ReadName?: string,
   r2ReadName?: string,
   r1UmiName?: string,
   r2UmiName?: string,
-): Record<string, string> {
+): Record<DistName, string> {
   const r1 = r1ReadName ?? "R1";
   const r2 = r2ReadName ?? "R2";
   const umi1 = r1UmiName ?? "UMI";
@@ -28,6 +40,8 @@ export function buildDistLabels(
     consensus_r1_length: `Read 1 insert length (${r1}) — after UMI consensus`,
     consensus_r2_length: `Read 2 insert length (${r2}) — after UMI consensus`,
     reads_per_umi: "Reads per UMI molecule",
+    aa_length: "Peptide length (AA)",
+    nt_length: "Peptide length (nt)",
   };
 }
 
@@ -42,8 +56,8 @@ export type ChartData = {
  *  by the caller so each consumer can build them from its own pattern context. */
 export function buildChart(
   dists: SampleDistributions,
-  name: string,
-  labels: Record<string, string>,
+  name: DistName,
+  labels: Record<DistName, string>,
   sortNumeric = false,
 ): ChartData | undefined {
   const bins = dists[name];
