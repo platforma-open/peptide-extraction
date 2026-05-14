@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.peptide-profiling.model
 
+## 1.2.0
+
+### Minor Changes
+
+- 2b8bdec: New UMI coverage distribution plot and read filtering based on UMI sequencing quality
+
 ## 1.1.1
 
 ### Patch Changes
