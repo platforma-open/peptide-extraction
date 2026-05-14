@@ -9,13 +9,25 @@ export type DistBin = {
 
 export type SampleDistributions = Record<string, DistBin[]>;
 
-/** Build dynamic distribution labels using actual tag names from patternParts */
+// Known distribution names emitted by qc_checks.py. The frontend treats this
+export type DistName =
+  | "r1_length"
+  | "r2_length"
+  | "umi_length"
+  | "umi2_length"
+  | "consensus_r1_length"
+  | "consensus_r2_length"
+  | "reads_per_umi"
+  | "aa_length"
+  | "nt_length";
+
+// Build dynamic distribution labels using actual tag names from patternParts.
 export function buildDistLabels(
   r1ReadName?: string,
   r2ReadName?: string,
   r1UmiName?: string,
   r2UmiName?: string,
-): Record<string, string> {
+): Record<DistName, string> {
   const r1 = r1ReadName ?? "R1";
   const r2 = r2ReadName ?? "R2";
   const umi1 = r1UmiName ?? "UMI";
@@ -27,6 +39,35 @@ export function buildDistLabels(
     umi2_length: `${umi2} — molecular barcode`,
     consensus_r1_length: `Read 1 insert length (${r1}) — after UMI consensus`,
     consensus_r2_length: `Read 2 insert length (${r2}) — after UMI consensus`,
+    reads_per_umi: "Reads per UMI molecule",
+    aa_length: "Peptide length (AA)",
+    nt_length: "Peptide length (nt)",
+  };
+}
+
+export type ChartData = {
+  name: string;
+  label: string;
+  bins: (DistBin & { widthPct: number })[];
+};
+
+/** Shape a named distribution into a renderable chart: pick bins, optionally
+ *  sort numerically, scale widths against the largest pct. Labels are supplied
+ *  by the caller so each consumer can build them from its own pattern context. */
+export function buildChart(
+  dists: SampleDistributions,
+  name: DistName,
+  labels: Record<DistName, string>,
+  sortNumeric = false,
+): ChartData | undefined {
+  const bins = dists[name];
+  if (!bins?.length) return undefined;
+  const sorted = sortNumeric ? [...bins].sort((a, b) => Number(a.bin) - Number(b.bin)) : bins;
+  const maxPct = Math.max(...sorted.map((b) => b.pct), 0.01);
+  return {
+    name,
+    label: labels[name] ?? name,
+    bins: sorted.map((b) => ({ ...b, widthPct: (b.pct / maxPct) * 100 })),
   };
 }
 

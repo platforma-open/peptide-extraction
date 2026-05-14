@@ -9,6 +9,7 @@ import { sampleResults } from "../results";
 import AaCompositionChart from "../components/AaCompositionChart.vue";
 import SeqLogoChart from "../components/SeqLogoChart.vue";
 import DistributionChart from "../components/DistributionChart.vue";
+import UmiQcChart from "../components/UmiQcChart.vue";
 import PipelineFunnelChart from "../components/PipelineFunnelChart.vue";
 import QcSection from "../components/QcSection.vue";
 
@@ -17,14 +18,7 @@ const sampleId = defineModel<string | undefined>();
 const app = useApp();
 
 // Top-level tabs
-type TabId = "visualReport" | "qualityChecks" | "distributions" | "logs";
-const tabOptions: SimpleOption<TabId>[] = [
-  { value: "visualReport", text: "Visual Report" },
-  { value: "qualityChecks", text: "Quality Checks" },
-  { value: "distributions", text: "Peptide Lengths" },
-  { value: "logs", text: "Logs" },
-];
-const currentTab = ref<TabId>("visualReport");
+type TabId = "visualReport" | "qualityChecks" | "distributions" | "umiQc" | "logs";
 
 // Refine and consensus only run when the pattern carries a UMI; otherwise
 // those step logs are always empty, so we hide them from the step selector.
@@ -33,6 +27,24 @@ const hasUmi = computed(() => {
   const parts = app.model.data.patternParts;
   if (!parts) return false;
   return parts.r1?.umi !== undefined || parts.r2?.umi !== undefined;
+});
+
+const tabOptions = computed<SimpleOption<TabId>[]>(() => {
+  const opts: SimpleOption<TabId>[] = [
+    { value: "visualReport", text: "Visual Report" },
+    { value: "qualityChecks", text: "Quality Checks" },
+    { value: "distributions", text: "Peptide Lengths" },
+  ];
+  if (hasUmi.value) opts.push({ value: "umiQc", text: "UMI QC" });
+  opts.push({ value: "logs", text: "Logs" });
+  return opts;
+});
+const currentTab = ref<TabId>("visualReport");
+
+// If the user had UMI QC selected and then switched to a no-UMI pattern,
+// reset back to Visual Report so the selector doesn't point at a hidden tab.
+watch(hasUmi, (umi) => {
+  if (!umi && currentTab.value === "umiQc") currentTab.value = "visualReport";
 });
 
 // Log step selector (under Logs tab)
@@ -89,6 +101,10 @@ const currentSample = computed(() => {
 
   <template v-if="currentTab === 'distributions'">
     <DistributionChart :distributions="currentSample?.distributions" />
+  </template>
+
+  <template v-if="currentTab === 'umiQc'">
+    <UmiQcChart :distributions="currentSample?.distributions" />
   </template>
 
   <template v-if="currentTab === 'logs'">

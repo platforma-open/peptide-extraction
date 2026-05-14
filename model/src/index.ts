@@ -34,6 +34,7 @@ export type BlockData = {
   useWildcards?: boolean;
   unstranded?: boolean;
   minReadsPerConsensus?: number;
+  minUmiQuality?: number;
   errorBudget?: number;
   maxIndels?: number;
   autoR1OnlyAssembly?: boolean;
@@ -57,17 +58,23 @@ export const ProgressPrefix = "[==PROGRESS==]";
 export const ProgressPattern =
   /(?<stage>[^:]*):(?: *(?<progress>[0-9.]+)%)?(?: *ETA: *(?<eta>.+))?/;
 
-const dataModel = new DataModelBuilder().from<BlockData>("v1").init(() => ({
-  minReadsPerConsensus: 2,
-  errorBudget: 10,
-  maxIndels: 1,
-  autoR1OnlyAssembly: true,
-  filterInvalidPeptides: true,
-  removeReadSingletons: true,
-  qcTableState: createPlDataTableStateV2(),
-  resultsTableState: createPlDataTableStateV2(),
-  useWildcards: true,
-}));
+type BlockDataV1 = Omit<BlockData, "minUmiQuality">;
+
+const dataModel = new DataModelBuilder()
+  .from<BlockDataV1>("v1")
+  .migrate<BlockData>("v2", (v1) => ({ ...v1, minUmiQuality: 20 }))
+  .init(() => ({
+    minReadsPerConsensus: 2,
+    minUmiQuality: 20,
+    errorBudget: 10,
+    maxIndels: 1,
+    autoR1OnlyAssembly: true,
+    filterInvalidPeptides: true,
+    removeReadSingletons: true,
+    qcTableState: createPlDataTableStateV2(),
+    resultsTableState: createPlDataTableStateV2(),
+    useWildcards: true,
+  }));
 
 export const platforma = BlockModelV3.create(dataModel)
 
@@ -327,8 +334,24 @@ export const platforma = BlockModelV3.create(dataModel)
       );
     }
 
+    // UMI QC fields must be populated when the pattern carries a UMI.
+    const hasUmi = patternParts.r1.umi !== undefined || patternParts.r2?.umi !== undefined;
+    if (hasUmi) {
+      const missing: string[] = [];
+      if (data.minReadsPerConsensus === undefined) missing.push("Min reads per UMI");
+      if (data.maxIndels === undefined) missing.push("Max UMI indels");
+      if (data.minUmiQuality === undefined) missing.push("Min UMI quality");
+      if (missing.length > 0) {
+        throw new Error(
+          `Set the following UMI QC fields in Advanced settings: ${missing.join(", ")}.`,
+        );
+      }
+    }
+
     if (data.minReadsPerConsensus !== undefined && data.minReadsPerConsensus < 1)
       throw new Error("Min reads per consensus must be at least 1");
+    if (data.minUmiQuality !== undefined && (data.minUmiQuality < 0 || data.minUmiQuality > 50))
+      throw new Error("Min UMI quality must be between 0 and 50");
     if (data.errorBudget !== undefined && data.errorBudget < 0)
       throw new Error("Error budget must be 0 or greater");
     if (data.maxIndels !== undefined && data.maxIndels < 0)
@@ -348,6 +371,7 @@ export const platforma = BlockModelV3.create(dataModel)
       useWildcards: useWildcards,
       unstranded: data.unstranded ?? false,
       minReadsPerConsensus: data.minReadsPerConsensus,
+      minUmiQuality: data.minUmiQuality,
       errorBudget: data.errorBudget,
       maxIndels: data.maxIndels,
       autoR1OnlyAssembly: data.autoR1OnlyAssembly,

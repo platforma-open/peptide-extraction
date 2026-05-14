@@ -264,6 +264,7 @@ wf.body(func(args) {
 				errorBudget: args.errorBudget,
 				maxIndels: args.maxIndels,
 				minReadsPerConsensus: args.minReadsPerConsensus,
+				minUmiQuality: args.minUmiQuality,
 				autoR1OnlyAssembly: args.autoR1OnlyAssembly,
 				patternParts: args.patternParts,
 				fileExtension: fileExtension,

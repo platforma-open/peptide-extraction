@@ -36,6 +36,7 @@ self.body(func(inputs) {
 	errorBudget := inputs.errorBudget
 	maxIndels := inputs.maxIndels
 	minReadsPerConsensus := inputs.minReadsPerConsensus
+	minUmiQuality := inputs.minUmiQuality
 	autoR1OnlyAssembly := inputs.autoR1OnlyAssembly
 	mitoolMemGB := inputs.mitoolMemGB
 	mitoolCPUs := inputs.mitoolCPUs
@@ -183,6 +184,7 @@ self.body(func(inputs) {
 		errorBudget: errorBudget,
 		maxIndels: maxIndels,
 		minReadsPerConsensus: minReadsPerConsensus,
+		minUmiQuality: minUmiQuality,
 		autoR1OnlyAssembly: autoR1OnlyAssembly,
 		mitoolMemGB: mitoolMemGB,
 		mitoolCPUs: mitoolCPUs,
