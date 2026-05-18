@@ -159,7 +159,6 @@ self.body(func(inputs) {
 	// =========================================================================
 
 	gateCmd := exec.builder().
-		writeFile("decision.json", "").
 		software(parseGateSw).
 		cpu(1).
 		mem("256MiB").

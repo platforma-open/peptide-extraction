@@ -98,9 +98,6 @@ self.body(func(inputs) {
 		emptyBranchCmd := exec.builder().
 			writeFile("refine_report.txt", "").
 			writeFile("consensus_report.txt", "").
-			writeFile("qc_checks.ndjson", "").
-			writeFile("pipeline_funnel.ndjson", "").
-			writeFile("distributions.ndjson", "").
 			software(qcChecksSw).
 			cpu(1).
 			mem("512MiB").
@@ -212,7 +209,6 @@ self.body(func(inputs) {
 
 	// Step 5: mitool tag-stat (with-UMI: reads consensus.mic; no-UMI: reads parsed.mic)
 	tagStatBuilder := exec.builder().
-		writeFile("tagstat.tsv", "").
 		printErrStreamToStdout().
 		saveStdoutStream().
 		env("MI_PROGRESS_PREFIX", progressPrefix).
@@ -335,9 +331,6 @@ self.body(func(inputs) {
 	// files — qc_checks.py regexes return nothing for empty reports, which is
 	// exactly the correct behavior (no UMI-based metrics to compute).
 	qcChecksBuilder := exec.builder().
-		writeFile("qc_checks.ndjson", "").
-		writeFile("pipeline_funnel.ndjson", "").
-		writeFile("distributions.ndjson", "").
 		software(qcChecksSw).
 		cpu(1).
 		mem("512MiB").
