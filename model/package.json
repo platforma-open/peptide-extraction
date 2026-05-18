@@ -21,6 +21,7 @@
     "test": "vitest --run --passWithNoTests"
   },
   "dependencies": {
+    "@milaboratories/helpers": "catalog:",
     "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {
