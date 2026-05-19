@@ -25,6 +25,8 @@ self.body(func(inputs) {
 	mitoolMem := string(mitoolMemGB) + "GiB"
 
 	parseCmd := exec.builder().
+		writeFile("parsed.mic", bytes(0)).
+		writeFile("parse_report.txt", "").
 		printErrStreamToStdout().
 		saveStdoutStream().
 		env("MI_PROGRESS_PREFIX", progressPrefix).
