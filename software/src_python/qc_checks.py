@@ -8,12 +8,13 @@ Outputs three NDJSON files:
 
 Usage:
   python qc_checks.py <parse_report> <refine_report> <consensus_report> \
-      <qc_output.ndjson> <funnel_output.ndjson> <dist_output.ndjson>
+      <qc_output.ndjson> <funnel_output.ndjson> <dist_output.ndjson> \
+      [--read-singletons <tsv>]
 """
 
+import argparse
 import json
 import re
-import sys
 
 
 def _extract(text: str, pattern: str) -> str | None:
@@ -139,6 +140,41 @@ FUNNEL_KEYS = ("step", "reads", "lost", "reason", "readsInContigs", "readsDiscar
 def _normalize_funnel(funnel: list[dict]) -> list[dict]:
     """Fill missing keys with None so every row has the canonical schema."""
     return [{k: entry.get(k) for k in FUNNEL_KEYS} for entry in funnel]
+
+
+def _read_singleton_count(path: str) -> int | None:
+    """Parse the no-UMI read-singleton count from a 1x1 TSV (header + value)."""
+    with open(path) as f:
+        rows = [line.strip() for line in f if line.strip()]
+    # Skip the header row written by polars (column name "readSingletonsLost").
+    for row in rows[1:]:
+        try:
+            return int(row.split("\t")[0])
+        except ValueError:
+            continue
+    return None
+
+
+def _augment_with_read_singletons(funnel: list[dict], lost: int) -> list[dict]:
+    """Insert a read-singleton funnel row immediately after `parse`.
+
+    Used only on the no-UMI path: every singleton peptide represents one read,
+    so `lost` is both the row count and the read count removed by the filter.
+    """
+    parse_idx = next(
+        (i for i, e in enumerate(funnel) if e.get("step") == "parse"), None
+    )
+    if parse_idx is None:
+        return funnel
+    matched_reads = funnel[parse_idx].get("reads") or 0
+    surviving = matched_reads - lost
+    new_row = {
+        "step": "read_singleton_filter",
+        "reads": surviving,
+        "lost": lost,
+        "reason": "Read singletons dropped",
+    }
+    return funnel[: parse_idx + 1] + [new_row] + funnel[parse_idx + 1 :]
 
 
 def build_funnel(parse_text: str, refine_text: str, consensus_text: str) -> list[dict]:
@@ -286,22 +322,29 @@ def build_distributions(parse_text: str, consensus_text: str) -> list[dict]:
 
 
 def main():
-    if len(sys.argv) != 7:
-        print(
-            f"Usage: {sys.argv[0]} <parse_report> <refine_report> <consensus_report> "
-            "<qc_output.ndjson> <funnel_output.ndjson> <dist_output.ndjson>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("parse_report")
+    parser.add_argument("refine_report")
+    parser.add_argument("consensus_report")
+    parser.add_argument("qc_output")
+    parser.add_argument("funnel_output")
+    parser.add_argument("dist_output")
+    parser.add_argument(
+        "--read-singletons",
+        default=None,
+        help=(
+            "Optional 1x1 TSV (header + count) with the number of reads "
+            "removed by the no-UMI read-singleton filter. Adds a "
+            "`read_singleton_filter` row to the pipeline funnel."
+        ),
+    )
+    args = parser.parse_args()
 
-    (parse_path, refine_path, consensus_path,
-     qc_output_path, funnel_output_path, dist_output_path) = sys.argv[1:7]
-
-    with open(parse_path) as f:
+    with open(args.parse_report) as f:
         parse_text = f.read()
-    with open(refine_path) as f:
+    with open(args.refine_report) as f:
         refine_text = f.read()
-    with open(consensus_path) as f:
+    with open(args.consensus_report) as f:
         consensus_text = f.read()
 
     # QC checks
@@ -310,14 +353,19 @@ def main():
     checks.extend(parse_refine_report(refine_text))
     checks.extend(parse_consensus_report(consensus_text))
 
-    with open(qc_output_path, "w") as f:
+    with open(args.qc_output, "w") as f:
         for check in checks:
             f.write(json.dumps(check) + "\n")
 
     # Pipeline funnel
-    funnel = _normalize_funnel(build_funnel(parse_text, refine_text, consensus_text))
+    funnel = build_funnel(parse_text, refine_text, consensus_text)
+    if args.read_singletons:
+        lost = _read_singleton_count(args.read_singletons)
+        if lost is not None and lost > 0:
+            funnel = _augment_with_read_singletons(funnel, lost)
+    funnel = _normalize_funnel(funnel)
 
-    with open(funnel_output_path, "w") as f:
+    with open(args.funnel_output, "w") as f:
         for entry in funnel:
             f.write(json.dumps(entry) + "\n")
 
@@ -332,7 +380,7 @@ def main():
     if not distributions:
         distributions.append({"dist": "__none__", "bin": "", "count": 0, "pct": 0.0})
 
-    with open(dist_output_path, "w") as f:
+    with open(args.dist_output, "w") as f:
         for entry in distributions:
             f.write(json.dumps(entry) + "\n")
 

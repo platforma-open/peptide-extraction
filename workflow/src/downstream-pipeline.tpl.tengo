@@ -271,6 +271,7 @@ self.body(func(inputs) {
 	//   abundance annotations flip to readCount (see column-specs.lib.tengo and
 	//   blocks/mixcr-clonotyping/workflow/src/calculate-export-specs.lib.tengo).
 	collapsed := undefined
+	recordReadSingletons := false
 	if hasAnyUmi {
 		collapsed = df.groupBy(r1InsertName).agg(
 			pt.col(r1InsertName).count().alias("uniqueMoleculeCount"),
@@ -298,6 +299,11 @@ self.body(func(inputs) {
 		)
 
 		if is_undefined(removeReadSingletons) || removeReadSingletons {
+			// Count reads dropped by the singleton filter.
+			collapsed.filter(pt.col("readCount").eq(pt.lit(1))).select(
+				pt.col("readCount").count().alias("readSingletonsLost")
+			).save("read_singletons.tsv")
+			recordReadSingletons = true
 			collapsed = collapsed.filter(pt.col("readCount").ge(pt.lit(2)))
 		}
 	}
@@ -328,6 +334,10 @@ self.body(func(inputs) {
 	collapsed.save("peptides.parquet")
 	collapseResult := collapseWf.run()
 	peptidesParquet := collapseResult.getFile("peptides.parquet")
+	readSingletonsTsv := undefined
+	if recordReadSingletons {
+		readSingletonsTsv = collapseResult.getFile("read_singletons.tsv")
+	}
 
 	// Step 7: Extract QC checks + funnel + distributions.
 	// With UMI: pass real refine/consensus reports alongside the parse report.
@@ -357,6 +367,12 @@ self.body(func(inputs) {
 		qcChecksBuilder = qcChecksBuilder.
 			writeFile("refine_report.txt", "", { writable: true }).
 			writeFile("consensus_report.txt", "", { writable: true })
+	}
+
+	if !is_undefined(readSingletonsTsv) {
+		qcChecksBuilder = qcChecksBuilder.
+			arg("--read-singletons").arg("read_singletons.tsv").
+			addFile("read_singletons.tsv", readSingletonsTsv)
 	}
 
 	qcChecksCmd := qcChecksBuilder.
