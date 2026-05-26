@@ -3,6 +3,7 @@
 // for the simpler peptide-profiling case (one NT column per row).
 
 pt := import("@platforma-sdk/workflow-tengo:pt")
+maps := import("@platforma-sdk/workflow-tengo:maps")
 text := import("text")
 
 // Standard genetic code. Stops are emitted as "*".
@@ -71,7 +72,8 @@ translateNtToAaPt := func(ntExpr, codonMap) {
 	seq := ntExpr.fillNull("").strToUpper()
 	seq = seq.strReplace("(.{3})", "$1|", { replaceAll: true })
 	seq = seq.strReplace("\\|[ACGT]{1,2}$", "|", { replaceAll: false })
-	for codon, aa in codonMap {
+	for codon in maps.getKeys(codonMap) {
+		aa := codonMap[codon]
 		seq = seq.strReplace(codon + "|", aa + "|", { replaceAll: true, literal: true })
 	}
 	seq = seq.strReplace("\\|$", "", { replaceAll: false })

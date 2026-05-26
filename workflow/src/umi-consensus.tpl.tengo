@@ -39,8 +39,8 @@ self.body(func(inputs) {
 
 	// Step 2: mitool refine-tags
 	refineBuilder := exec.builder().
-		writeFile("refined.mic", bytes(0)).
-		writeFile("refine_report.txt", "").
+		writeFile("refined.mic", bytes(0), { writable: true }).
+		writeFile("refine_report.txt", "", { writable: true }).
 		printErrStreamToStdout().
 		saveStdoutStream().
 		env("MI_PROGRESS_PREFIX", progressPrefix).
@@ -68,7 +68,7 @@ self.body(func(inputs) {
 
 	// Step 3: mitool sort
 	sortBuilder := exec.builder().
-		writeFile("sorted.mic", bytes(0)).
+		writeFile("sorted.mic", bytes(0), { writable: true }).
 		printErrStreamToStdout().
 		saveStdoutStream().
 		env("MI_PROGRESS_PREFIX", progressPrefix).
@@ -92,8 +92,8 @@ self.body(func(inputs) {
 
 	// Step 4: mitool consensus
 	consensusBuilder := exec.builder().
-		writeFile("consensus.mic", bytes(0)).
-		writeFile("consensus_report.txt", "").
+		writeFile("consensus.mic", bytes(0), { writable: true }).
+		writeFile("consensus_report.txt", "", { writable: true }).
 		printErrStreamToStdout().
 		saveStdoutStream().
 		env("MI_PROGRESS_PREFIX", progressPrefix).

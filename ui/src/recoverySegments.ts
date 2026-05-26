@@ -49,15 +49,20 @@ export function buildRecoverySegments(
   const matched = parse?.reads ?? 0;
   const patternMismatch = Math.max(0, total - matched);
 
-  // No-UMI pipeline: funnel has no `refine` entry. All matched reads are
-  // recovered; the only loss is pattern mismatch.
+  // No-UMI pipeline: funnel has no `refine` entry. The only losses are pattern
+  // mismatch at parse and — when "Drop read singletons" is on — peptides
+  // observed in a single read, filtered post-collapse.
   const hasUmi = refine !== undefined;
   if (!hasUmi) {
+    const readSingletonStep = funnel.find((e) => e.step === "read_singleton_filter");
+    const readSingletonsLost = readSingletonStep?.lost ?? 0;
+    const recovered = Math.max(0, matched - readSingletonsLost);
+
     const segments: RecoverySegment[] = [
       {
         key: "recovered",
         label: "Successfully extracted",
-        value: matched,
+        value: recovered,
         color: colors.recovered,
         description: "Reads that matched the tag pattern and yielded a valid peptide.",
       },
@@ -69,6 +74,17 @@ export function buildRecoverySegments(
         description: "Reads that did not match the tag pattern.",
       },
     ];
+
+    if (readSingletonsLost > 0) {
+      segments.push({
+        key: "readSingleton",
+        label: "Read singletons dropped",
+        value: readSingletonsLost,
+        color: colors.singleton,
+        description: "Reads in peptides supported by only one read.",
+      });
+    }
+
     return { total, segments };
   }
 

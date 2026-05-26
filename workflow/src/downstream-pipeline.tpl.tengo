@@ -98,9 +98,9 @@ self.body(func(inputs) {
 		emptyBranchCmd := exec.builder().
 			writeFile("refine_report.txt", "").
 			writeFile("consensus_report.txt", "").
-			writeFile("qc_checks.ndjson", "").
-			writeFile("pipeline_funnel.ndjson", "").
-			writeFile("distributions.ndjson", "").
+			writeFile("qc_checks.ndjson", "", { writable: true }).
+			writeFile("pipeline_funnel.ndjson", "", { writable: true }).
+			writeFile("distributions.ndjson", "", { writable: true }).
 			software(qcChecksSw).
 			cpu(1).
 			mem("512MiB").
@@ -212,7 +212,7 @@ self.body(func(inputs) {
 
 	// Step 5: mitool tag-stat (with-UMI: reads consensus.mic; no-UMI: reads parsed.mic)
 	tagStatBuilder := exec.builder().
-		writeFile("tagstat.tsv", "").
+		writeFile("tagstat.tsv", "", { writable: true }).
 		printErrStreamToStdout().
 		saveStdoutStream().
 		env("MI_PROGRESS_PREFIX", progressPrefix).
@@ -297,7 +297,16 @@ self.body(func(inputs) {
 			).alias("readFraction")
 		)
 
-		if is_undefined(removeReadSingletons) || removeReadSingletons {
+		// Always count singletons in no-UMI mode — needed for the
+		// SingletonReadRate QC check (emitted regardless of the toggle) and
+		// the Peptide Recovery bar segment (which shows lost reads only when
+		// the filter is active).
+		collapsed.filter(pt.col("readCount").eq(pt.lit(1))).select(
+			pt.col("readCount").count().alias("readSingletonsLost")
+		).save("read_singletons.tsv")
+
+		// Filter remains controlled by the toggle.
+		if !is_undefined(removeReadSingletons) && removeReadSingletons {
 			collapsed = collapsed.filter(pt.col("readCount").ge(pt.lit(2)))
 		}
 	}
@@ -325,9 +334,13 @@ self.body(func(inputs) {
 	).withColumns(
 		pt.col("aaSeqPeptide").strLenChars().alias("aaLengthPeptide")
 	).withoutColumns("_aaRaw")
-	collapsed.save("peptides.parquet")
+	collapsed.sort(["variantKey"]).save("peptides.parquet")
 	collapseResult := collapseWf.run()
 	peptidesParquet := collapseResult.getFile("peptides.parquet")
+	readSingletonsTsv := undefined
+	if !hasAnyUmi {
+		readSingletonsTsv = collapseResult.getFile("read_singletons.tsv")
+	}
 
 	// Step 7: Extract QC checks + funnel + distributions.
 	// With UMI: pass real refine/consensus reports alongside the parse report.
@@ -335,9 +348,9 @@ self.body(func(inputs) {
 	// files — qc_checks.py regexes return nothing for empty reports, which is
 	// exactly the correct behavior (no UMI-based metrics to compute).
 	qcChecksBuilder := exec.builder().
-		writeFile("qc_checks.ndjson", "").
-		writeFile("pipeline_funnel.ndjson", "").
-		writeFile("distributions.ndjson", "").
+		writeFile("qc_checks.ndjson", "", { writable: true }).
+		writeFile("pipeline_funnel.ndjson", "", { writable: true }).
+		writeFile("distributions.ndjson", "", { writable: true }).
 		software(qcChecksSw).
 		cpu(1).
 		mem("512MiB").
@@ -355,8 +368,19 @@ self.body(func(inputs) {
 			addFile("consensus_report.txt", umiRun.output("consensusReport"))
 	} else {
 		qcChecksBuilder = qcChecksBuilder.
-			writeFile("refine_report.txt", "").
-			writeFile("consensus_report.txt", "")
+			writeFile("refine_report.txt", "", { writable: true }).
+			writeFile("consensus_report.txt", "", { writable: true })
+	}
+
+	if !is_undefined(readSingletonsTsv) {
+		qcChecksBuilder = qcChecksBuilder.
+			arg("--read-singletons").arg("read_singletons.tsv").
+			addFile("read_singletons.tsv", readSingletonsTsv)
+		if !is_undefined(removeReadSingletons) && removeReadSingletons {
+			// Tell qc_checks the singletons were actually dropped — the
+			// count file is written unconditionally in no-UMI mode
+			qcChecksBuilder = qcChecksBuilder.arg("--singletons-dropped")
+		}
 	}
 
 	qcChecksCmd := qcChecksBuilder.

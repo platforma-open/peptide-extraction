@@ -15,7 +15,8 @@
     "@platforma-sdk/model": "catalog:",
     "@platforma-sdk/ui-vue": "catalog:",
     "ag-grid-enterprise": "catalog:",
-    "ag-grid-vue3": "catalog:"
+    "ag-grid-vue3": "catalog:",
+    "vue": "catalog:"
   },
   "devDependencies": {
     "@milaboratories/ts-builder": "catalog:",
