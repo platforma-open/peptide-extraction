@@ -228,7 +228,7 @@ const hasUmi = computed(() => {
 
       <div v-if="!hasUmi" :class="$style.checkboxRow">
         <PlCheckbox
-          :model-value="app.model.data.removeReadSingletons ?? true"
+          :model-value="app.model.data.removeReadSingletons ?? false"
           @update:model-value="(v) => (app.model.data.removeReadSingletons = v)"
         >
           Drop read singletons

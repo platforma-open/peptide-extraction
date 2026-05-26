@@ -298,7 +298,7 @@ self.body(func(inputs) {
 			).alias("readFraction")
 		)
 
-		if is_undefined(removeReadSingletons) || removeReadSingletons {
+		if !is_undefined(removeReadSingletons) && removeReadSingletons {
 			// Count reads dropped by the singleton filter.
 			collapsed.filter(pt.col("readCount").eq(pt.lit(1))).select(
 				pt.col("readCount").count().alias("readSingletonsLost")
@@ -331,7 +331,7 @@ self.body(func(inputs) {
 	).withColumns(
 		pt.col("aaSeqPeptide").strLenChars().alias("aaLengthPeptide")
 	).withoutColumns("_aaRaw")
-	collapsed.save("peptides.parquet")
+	collapsed.sort(["variantKey"]).save("peptides.parquet")
 	collapseResult := collapseWf.run()
 	peptidesParquet := collapseResult.getFile("peptides.parquet")
 	readSingletonsTsv := undefined
