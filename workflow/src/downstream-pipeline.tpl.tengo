@@ -271,7 +271,6 @@ self.body(func(inputs) {
 	//   abundance annotations flip to readCount (see column-specs.lib.tengo and
 	//   blocks/mixcr-clonotyping/workflow/src/calculate-export-specs.lib.tengo).
 	collapsed := undefined
-	recordReadSingletons := false
 	if hasAnyUmi {
 		collapsed = df.groupBy(r1InsertName).agg(
 			pt.col(r1InsertName).count().alias("uniqueMoleculeCount"),
@@ -298,12 +297,16 @@ self.body(func(inputs) {
 			).alias("readFraction")
 		)
 
+		// Always count singletons in no-UMI mode — needed for the
+		// SingletonReadRate QC check (emitted regardless of the toggle) and
+		// the Peptide Recovery bar segment (which shows lost reads only when
+		// the filter is active).
+		collapsed.filter(pt.col("readCount").eq(pt.lit(1))).select(
+			pt.col("readCount").count().alias("readSingletonsLost")
+		).save("read_singletons.tsv")
+
+		// Filter remains controlled by the toggle.
 		if !is_undefined(removeReadSingletons) && removeReadSingletons {
-			// Count reads dropped by the singleton filter.
-			collapsed.filter(pt.col("readCount").eq(pt.lit(1))).select(
-				pt.col("readCount").count().alias("readSingletonsLost")
-			).save("read_singletons.tsv")
-			recordReadSingletons = true
 			collapsed = collapsed.filter(pt.col("readCount").ge(pt.lit(2)))
 		}
 	}
@@ -335,7 +338,7 @@ self.body(func(inputs) {
 	collapseResult := collapseWf.run()
 	peptidesParquet := collapseResult.getFile("peptides.parquet")
 	readSingletonsTsv := undefined
-	if recordReadSingletons {
+	if !hasAnyUmi {
 		readSingletonsTsv = collapseResult.getFile("read_singletons.tsv")
 	}
 
@@ -373,6 +376,11 @@ self.body(func(inputs) {
 		qcChecksBuilder = qcChecksBuilder.
 			arg("--read-singletons").arg("read_singletons.tsv").
 			addFile("read_singletons.tsv", readSingletonsTsv)
+		if !is_undefined(removeReadSingletons) && removeReadSingletons {
+			// Tell qc_checks the singletons were actually dropped — the
+			// count file is written unconditionally in no-UMI mode
+			qcChecksBuilder = qcChecksBuilder.arg("--singletons-dropped")
+		}
 	}
 
 	qcChecksCmd := qcChecksBuilder.

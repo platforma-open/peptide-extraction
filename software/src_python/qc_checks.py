@@ -129,6 +129,25 @@ def parse_consensus_report(text: str) -> list[dict]:
     return checks
 
 
+def singleton_read_check(matched_reads: int | None, singletons: int | None) -> list[dict]:
+    """Read singleton rate check (no-UMI mode).
+
+    rate = singleton peptides / matched reads. Each singleton peptide is by
+    construction supported by exactly one read, so the count of singleton
+    peptides equals the number of singleton reads. Sort order 30 is shared
+    with SingletonsDropped (UMI mode); they're mutually exclusive.
+    """
+    if matched_reads is None or matched_reads == 0 or singletons is None:
+        return []
+    rate = singletons / matched_reads
+    return [_check(
+        "collapse", "SingletonReadRate", "Read singleton rate", rate,
+        f"{rate * 100:.1f}%",
+        upper=0.30, middle=0.50, sort_order=30,
+        higher_is_better=False,
+    )]
+
+
 # ── Pipeline funnel ───────────────────────────────────────────────────────────
 
 # Fixed schema for funnel rows. All per-sample NDJSONs must share this shape,
@@ -333,9 +352,20 @@ def main():
         "--read-singletons",
         default=None,
         help=(
-            "Optional 1x1 TSV (header + count) with the number of reads "
-            "removed by the no-UMI read-singleton filter. Adds a "
-            "`read_singleton_filter` row to the pipeline funnel."
+            "Optional 1x1 TSV (header + count) with the no-UMI singleton "
+            "peptide count. Always passed in no-UMI mode (for the "
+            "SingletonReadRate QC check); the count equals the number of "
+            "reads in singleton peptides."
+        ),
+    )
+    parser.add_argument(
+        "--singletons-dropped",
+        action="store_true",
+        help=(
+            "Indicates the read-singleton filter was active (toggle on). "
+            "Without this flag, the Peptide Recovery funnel row reports "
+            "`lost=0` since the singletons remain in the data even though "
+            "their count was computed."
         ),
     )
     args = parser.parse_args()
@@ -347,11 +377,19 @@ def main():
     with open(args.consensus_report) as f:
         consensus_text = f.read()
 
+    # Singleton count: parsed once and reused for both the QC check and the
+    # funnel augmentation below.
+    singleton_count: int | None = None
+    if args.read_singletons:
+        singleton_count = _read_singleton_count(args.read_singletons)
+
     # QC checks
+    matched_reads = _extract_int(parse_text, r"Matched reads:\s*(\d+)")
     checks: list[dict] = []
     checks.extend(parse_parse_report(parse_text))
     checks.extend(parse_refine_report(refine_text))
     checks.extend(parse_consensus_report(consensus_text))
+    checks.extend(singleton_read_check(matched_reads, singleton_count))
 
     with open(args.qc_output, "w") as f:
         for check in checks:
@@ -359,10 +397,12 @@ def main():
 
     # Pipeline funnel
     funnel = build_funnel(parse_text, refine_text, consensus_text)
-    if args.read_singletons:
-        lost = _read_singleton_count(args.read_singletons)
-        if lost is not None and lost > 0:
-            funnel = _augment_with_read_singletons(funnel, lost)
+    if singleton_count is not None:
+        # `lost` reflects what the filter actually removed: the singleton
+        # count when the toggle was on, zero otherwise. The row is emitted
+        # unconditionally so the funnel schema stays consistent across runs.
+        lost = singleton_count if args.singletons_dropped else 0
+        funnel = _augment_with_read_singletons(funnel, lost)
     funnel = _normalize_funnel(funnel)
 
     with open(args.funnel_output, "w") as f:
