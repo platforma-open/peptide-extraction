@@ -1,5 +1,18 @@
 # @platforma-open/milaboratories.peptide-profiling.ui
 
+## 1.3.0
+
+### Minor Changes
+
+- c0862aa: Update dependencies and include dropped singleton reads in barplot
+
+### Patch Changes
+
+- 979b532: update dependencies
+- Updated dependencies [c0862aa]
+- Updated dependencies [979b532]
+  - @platforma-open/milaboratories.peptide-profiling.model@1.3.0
+
 ## 1.2.0
 
 ### Minor Changes
