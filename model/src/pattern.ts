@@ -190,3 +190,32 @@ export function parsePattern(str: string): PatternParts | null {
 
   return { r1, r2 };
 }
+
+/** mitool's `>{n}` makes the `n` motif characters immediately left of `>`
+ *  trimmable, and a `*` resets that contiguous run. At least one fixed base
+ *  must survive the trim, so it must be strictly less than the right-anchor
+ *  characters after the last `*` (or the whole right anchor when there is no
+ *  `*`). Otherwise mitool fails: `>{n} > available` in the tokenizer ("Not
+ *  enough characters to the left of the '>' pattern"), `>{n} == available` at
+ *  plan build ("Can't build search plan"). */
+export function validateRightTrim(half: PatternHalf): string | null {
+  if (half.rightTrim === undefined) return null;
+  const anchor = half.rightAnchor ?? "";
+  const star = anchor.lastIndexOf("*");
+  const trailing = star === -1 ? anchor : anchor.slice(star + 1);
+  if (half.rightTrim >= trailing.length) {
+    const loc = star === -1 ? "the right anchor" : "the right anchor after the last '*'";
+    const max = trailing.length - 1;
+    const advice =
+      max >= 1
+        ? `use >{${max}} or fewer`
+        : star === -1
+          ? "remove the trim or lengthen the anchor"
+          : "remove the trim, add more bases after the '*', or drop the '*'";
+    return (
+      `Right-anchor trim >{${half.rightTrim}} leaves no fixed bases — ${loc} has ` +
+      `${trailing.length} character(s) and at least one must remain. To fix, ${advice}.`
+    );
+  }
+  return null;
+}

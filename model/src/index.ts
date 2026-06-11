@@ -8,10 +8,10 @@ import {
   parseResourceMap,
 } from "@platforma-sdk/model";
 import type { PatternParts } from "./pattern";
-import { applyWildcards, parsePattern } from "./pattern";
+import { applyWildcards, parsePattern, validateRightTrim } from "./pattern";
 import { getPreset } from "./presets";
 
-export { parsePattern } from "./pattern";
+export { parsePattern, validateRightTrim } from "./pattern";
 export type { LengthRange, PatternHalf, PatternParts } from "./pattern";
 export { allPresets, getPreset, presetsById } from "./presets";
 export type { Preset } from "./presets";
@@ -311,6 +311,15 @@ export const platforma = BlockModelV3.create(dataModel)
           );
         }
       }
+    }
+
+    // mitool's `>{n}` trim counts the contiguous anchor chars immediately to
+    // its left; a `*` resets that count. Catch an over-long trim here instead
+    // of letting mitool fail at parse time ("Not enough characters to the left
+    // of the '>' pattern").
+    for (const half of halves) {
+      const trimErr = validateRightTrim(half);
+      if (trimErr) throw new Error(trimErr);
     }
 
     // Stop-codon replacement: every selected stop type must have an AA chosen,

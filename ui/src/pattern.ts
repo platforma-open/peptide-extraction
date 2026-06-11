@@ -3,7 +3,10 @@ import type {
   PatternParts,
   LengthRange,
 } from "@platforma-open/milaboratories.peptide-profiling.model";
-export { parsePattern } from "@platforma-open/milaboratories.peptide-profiling.model";
+export {
+  parsePattern,
+  validateRightTrim,
+} from "@platforma-open/milaboratories.peptide-profiling.model";
 
 // ─── Assemble ─────────────────────────────────────────────────────────────────
 
