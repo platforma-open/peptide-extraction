@@ -105,17 +105,22 @@ function parseHalf(s: string): PatternHalf | null {
   };
 }
 
-/** Replace homopolymer runs (5+ identical bases, excluding N) with lowercase n wildcards.
- *  Excludes terminal runs unless allowTrailing is true (for right anchors only). */
+/** Replace homopolymer runs (5+ identical bases, excluding N) with lowercase n
+ *  wildcards. Leading runs are always preserved; trailing runs are preserved
+ *  unless allowTrailing is true (right anchors only). A `*` is a motif boundary
+ *  so each `*`-delimited segment is fuzzed independently. */
 function replaceHomopolymers(anchor: string, allowTrailing = false): string {
-  const len = anchor.length;
-  return anchor.replace(/([acgtACGTmkrywsMKRYWS])\1{4,}/gi, (match, _base, offset) => {
-    const atStart = offset === 0;
-    const atEnd = offset + match.length === len;
-    if (atStart) return match; // never replace leading runs
-    if (atEnd && !allowTrailing) return match; // skip trailing unless allowed
-    return "n".repeat(match.length);
-  });
+  const replaceInSegment = (segment: string): string => {
+    const len = segment.length;
+    return segment.replace(/([acgtACGTmkrywsMKRYWS])\1{4,}/gi, (match, _base, offset) => {
+      const atStart = offset === 0;
+      const atEnd = offset + match.length === len;
+      if (atStart) return match; // never replace leading runs
+      if (atEnd && !allowTrailing) return match; // skip trailing unless allowed
+      return "n".repeat(match.length);
+    });
+  };
+  return anchor.split("*").map(replaceInSegment).join("*");
 }
 
 function assembleHalf(h: PatternHalf): string {
