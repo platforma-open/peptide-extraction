@@ -14,6 +14,7 @@ import {
   generateR2fromR1,
   parsePattern,
   validateAnchor,
+  validateRightTrim,
   validateTrim,
 } from "../pattern";
 
@@ -239,6 +240,13 @@ const patternParseError = computed(() => {
       const readLabel = half.insertName === "R2" ? "Read 2" : "Read 1";
       return `${readLabel} insert needs either a specific length or a 3' anchor to mark where the peptide ends.`;
     }
+  }
+  // mitool's `>{n}` trim counts the contiguous anchor chars to its left, which
+  // a `*` resets — raise it here before the pattern reaches mitool (which would
+  // otherwise fail with "Not enough characters to the left of the '>' pattern").
+  for (const half of halves) {
+    const trimErr = validateRightTrim(half);
+    if (trimErr) return trimErr;
   }
   // Cross-check the pattern shape against the selected input dataset: a
   // paired-end pattern (with an R2 half) cannot run on a single-end input

@@ -1,11 +1,24 @@
 import type {
+  LengthRange,
   PatternHalf,
   PatternParts,
-  LengthRange,
 } from "@platforma-open/milaboratories.peptide-profiling.model";
-export { parsePattern } from "@platforma-open/milaboratories.peptide-profiling.model";
+export {
+  parsePattern,
+  validateRightTrim,
+} from "@platforma-open/milaboratories.peptide-profiling.model";
 
 // ─── Assemble ─────────────────────────────────────────────────────────────────
+
+/** Number of contiguous motif characters at the 3' end of an anchor — the
+ *  characters after the last `*`. A `>{n}` trim can only act on these (mitool
+ *  resets its motif counter at each `*`), so the default-trim computation must
+ *  be based on this, not the full anchor length, or it produces a trim that
+ *  reaches past the `*` and fails to build. */
+function trailingMotifLen(anchor: string): number {
+  const star = anchor.lastIndexOf("*");
+  return star === -1 ? anchor.length : anchor.length - star - 1;
+}
 
 function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
   const prefix = h.hasLeadingWildcard ? "*" : "";
@@ -44,13 +57,14 @@ function assembleHalf(h: PatternHalf, defaultIndex: 1 | 2): string {
         : `N{${h.insertLength.min}:${h.insertLength.max}}`;
   }
 
-  const anchorLen = h.rightAnchor.length;
+  // The builder has no trim control, so it always auto-manages the trim: keep a
+  // mandatory core and trim the rest of the 3' anchor (counting only the motif
+  // after the last `*`). Always recompute from the current anchor — never carry
+  // a stale trim from a previous anchor.
+  const anchorLen = trailingMotifLen(h.rightAnchor);
   const mandatory =
     defaultIndex === 2 ? R2_MANDATORY_RIGHT_ANCHOR_BP : R1_MANDATORY_RIGHT_ANCHOR_BP;
-  const trimValue =
-    h.rightTrim !== undefined && h.rightTrim < anchorLen
-      ? h.rightTrim
-      : defaultTrim(anchorLen, mandatory);
+  const trimValue = defaultTrim(anchorLen, mandatory);
   const trim = trimValue !== undefined ? `>{${trimValue}}` : "";
 
   return `^${prefix}${hetSpacerPart}${umiPart}${h.leftAnchor}(${h.insertName}:${insertPart})${h.rightAnchor}${trim}*`;
@@ -143,7 +157,7 @@ export function generateR2fromR1(r1: PatternHalf): PatternHalf {
     umi: r1.umi ? { ...r1.umi } : undefined,
     leftAnchor,
     rightAnchor,
-    rightTrim: defaultTrim(rightAnchor.length, R2_MANDATORY_RIGHT_ANCHOR_BP),
+    rightTrim: defaultTrim(trailingMotifLen(rightAnchor), R2_MANDATORY_RIGHT_ANCHOR_BP),
     insertLength: r1.insertLength,
     hasLeadingWildcard: r1.hasLeadingWildcard,
     hetSpacer: r1.hetSpacer ? { ...r1.hetSpacer } : undefined,
@@ -190,11 +204,11 @@ export function detectMismatches(actual: string, expected: string): MismatchPosi
 
 // ─── Per-field validators ─────────────────────────────────────────────────────
 
-const DNA_IUPAC_RE = /^[ACGTacgtMKRYWSBDHVNmkrywsbdhvn]*$/;
+const DNA_IUPAC_RE = /^[ACGTacgtMKRYWSBDHVNmkrywsbdhvn*]*$/;
 
 export function validateAnchor(value: string): string | null {
   if (!DNA_IUPAC_RE.test(value))
-    return "Only DNA/IUPAC characters allowed (A C G T M K R Y W S B D H V N — uppercase or lowercase)";
+    return "Only DNA/IUPAC characters allowed (A C G T M K R Y W S B D H V N — uppercase or lowercase), optionally with * wildcards";
   return null;
 }
 
