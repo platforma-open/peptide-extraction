@@ -30,7 +30,9 @@ export type PatternParts = {
 // Matches one half of a mitool parse pattern. Every part except the trailing
 // `*` is optional, including the peptide `(R<n>:...)` capture. A half with no
 // R capture is valid when the read carries only UMI/flanks/spacer and the
-// peptide insert lives on the other read:
+// peptide insert lives on the other read. Anchors may contain `*` to allow
+// any-length wildcards within or around the constant flanks — e.g. a floating
+// 5' anchor `(UMI:N{13})*ggccatggcc`, where the `*` is captured into leftAnchor:
 //
 //   ^[*][N{min[:max]}][(umiName:N{min[:max]})][leftAnchor][(insertName:*|N{n}|N{min:max})[rightAnchor]][>{trim}]*
 //
@@ -49,7 +51,7 @@ export type PatternParts = {
 //   12 = rightAnchor (may be empty)
 //   13 = right trim (or empty)
 const HALF_RE =
-  /^\^(\*)?(?:N\{(\d+)(?::(\d+))?\})?(?:\(([Uu][Mm][Ii]\d*):N\{(\d+)(?::(\d+))?\}\))?([A-Za-z]*)(?:\(([Rr]\d+):(?:(\*)|N\{(\d+)(?::(\d+))?\})\)([A-Za-z]*))?(?:>\{(\d+)\})?\*$/;
+  /^\^(\*)?(?:N\{(\d+)(?::(\d+))?\})?(?:\(([Uu][Mm][Ii]\d*):N\{(\d+)(?::(\d+))?\}\))?([A-Za-z*]*)(?:\(([Rr]\d+):(?:(\*)|N\{(\d+)(?::(\d+))?\})\)([A-Za-z*]*))?(?:>\{(\d+)\})?\*$/;
 
 function parseHalf(s: string): PatternHalf | null {
   const m = HALF_RE.exec(s.trim());

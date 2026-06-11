@@ -300,13 +300,14 @@ export const platforma = BlockModelV3.create(dataModel)
     }
 
     // Anchor characters must be DNA letters or IUPAC ambiguity codes
-    const dnaIupacRe = /^[ACGTacgtMKRYWSBDHVNmkrywsbdhvn]*$/;
+    const dnaIupacRe = /^[ACGTacgtMKRYWSBDHVNmkrywsbdhvn*]*$/;
     for (const half of halves) {
       for (const anchor of [half.leftAnchor, half.rightAnchor]) {
         if (anchor && !dnaIupacRe.test(anchor)) {
           throw new Error(
             "Anchor sequences must use DNA letters or IUPAC codes only " +
-              "(A, C, G, T, M, K, R, Y, W, S, B, D, H, V, N — uppercase or lowercase).",
+              "(A, C, G, T, M, K, R, Y, W, S, B, D, H, V, N — uppercase or lowercase), " +
+              "optionally with `*` for any-length wildcards.",
           );
         }
       }
