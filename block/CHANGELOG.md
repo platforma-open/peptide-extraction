@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.peptide-profiling
 
+## 1.2.2
+
+### Patch Changes
+
+- 7cee027: Bump mitool version to avoid CID conflicts with different CPU allocations
+
 ## 1.2.1
 
 ### Patch Changes

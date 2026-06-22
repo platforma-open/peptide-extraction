@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.peptide-profiling",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "files": [
     "index.d.ts",
     "index.js"
