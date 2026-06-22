@@ -19,7 +19,7 @@ catalog:
   "@platforma-sdk/blocks-deps-updater": 2.2.0
 
   "@platforma-open/milaboratories.runenv-python-3": 1.7.10
-  "@platforma-open/milaboratories.software-mitool": 2.3.1-52-main
+  "@platforma-open/milaboratories.software-mitool": 2.3.1-63-main
 
   "@milaboratories/multi-sequence-alignment": 1.47.16
   "@milaboratories/helpers": 1.14.2
