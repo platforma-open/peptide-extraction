@@ -1,49 +1,156 @@
 import { assertParamsObject, defineBlockKind } from "@platforma-sdk/block-kind";
+import { isPlRef, type PlRef } from "@platforma-sdk/model";
 import { name, version } from "../package.json" with { type: "json" };
 
-/**
- * This block's init-params contract — the shape a block of this kind receives
- * at creation, and exactly what a project template serializes for it.
- *
- * TODO(block-kind): replace `NEEDS_BLOCK_PARAMS` with the real params shape, then
- * wire the model's `init(({ params }) => …)` to consume them. If this block takes
- * no author-supplied params, set it to `Record<string, never>` deliberately.
- *
- * This is an intentional sentinel: `NEEDS_BLOCK_PARAMS` is an undefined type, so
- * the block fails to typecheck (TS2304) until the contract is chosen on purpose.
- * A scaffolded-but-unmigrated block must never compile with an empty contract by
- * default — see the block-kind migration recipe in the `block-dev` skill.
- */
-export type BlockParams = NEEDS_BLOCK_PARAMS;
+/** The three stop codons the block can translate to an amino acid instead of a stop. */
+export type StopCodonType = "amber" | "ochre" | "opal";
+
+/** Which amino acid each selected stop codon becomes. One IUPAC letter per entry. */
+export type StopCodonReplacements = {
+  amber?: string;
+  ochre?: string;
+  opal?: string;
+};
 
 /**
- * The same contract at runtime, for params that arrive from a template file rather than
- * from typed code — the only point that can catch a hand-written entry being wrong.
+ * This block's init-params contract — the shape a block of this kind receives at
+ * creation, and exactly what a project template serializes for it.
  *
- * TODO(block-kind): read each key `BlockParams` declares and say what it must be, then
- * return them. Plain TypeScript is the default here: a kind owes no schema library, and a
- * check written by hand is held to the contract by the return type. Reach for a validation
- * library only where the shape earns it, and add it to this package's dependencies yourself.
+ * Everything the scientist authors is here. The block's `BlockData` is wider in
+ * four places, and each exclusion is deliberate:
  *
- * Check the fields the contract requires, and stop there. A key the contract does not name
- * needs no rejection: it is dropped by not being read.
+ * - `patternParts` is a parse of `pattern`. The pattern editor re-derives it on
+ *   mount and the args lambda parses the pattern itself, so carrying it would
+ *   only create a second copy that can disagree with the first.
+ * - `defaultBlockLabel` is the label of the chosen input dataset and is rewritten
+ *   from `input` whenever the selection changes. Only the scientist's own
+ *   `customBlockLabel` is worth restoring.
+ * - `inputIsPairedEnd` is a model output the UI mirrors back into the data so the
+ *   args lambda can cross-check the pattern against the input. It describes the
+ *   input, not a choice.
+ * - `qcTableState` and `resultsTableState` are view state.
  *
- * This is a second intentional sentinel. The function has to return `BlockParams`, so
- * `return {}` stops compiling the moment the contract declares a required field — the check
- * cannot drift from the contract by being left behind. Never satisfy it with a cast: `value
- * as BlockParams` compiles today and checks nothing forever.
+ * Every field is optional: a block may be created with no template at all, and a
+ * template need not pin everything it could.
+ */
+export type BlockParams = {
+  input?: PlRef;
+  presetId?: string;
+  pattern?: string;
+  useWildcards?: boolean;
+  unstranded?: boolean;
+  minReadsPerConsensus?: number;
+  minUmiQuality?: number;
+  errorBudget?: number;
+  maxIndels?: number;
+  autoR1OnlyAssembly?: boolean;
+  filterInvalidPeptides?: boolean;
+  removeReadSingletons?: boolean;
+  stopCodonTypes?: StopCodonType[];
+  stopCodonReplacements?: StopCodonReplacements;
+  perProcessMemGB?: number;
+  perProcessCPUs?: number;
+  customBlockLabel?: string;
+};
+
+/**
+ * The same contract at runtime, for params that arrive from a template file rather
+ * than from typed code.
+ *
+ * Each field is checked on its own, and only for the shape the field has. Rules
+ * that span two fields are not checked here — that a selected stop codon has an
+ * amino acid chosen, that a Read 2 half needs a paired-end input, that a pattern
+ * captures the insert. Every one of those is a state the editor leaves behind
+ * mid-edit, and the args lambda already refuses them when the block tries to run.
+ * Refusing them here would mean a block the scientist can reach by hand cannot be
+ * carried by a template.
+ *
+ * The numeric bounds mirror the args lambda exactly, including its silence on
+ * whether a count is a whole number: a template that could only ever produce
+ * un-runnable args is rejected against the entry that carried it, and nothing
+ * beyond that is added.
  */
 function parseInitializationParams(value: unknown): BlockParams {
   assertParamsObject(value);
 
-  return {};
+  const params: Record<string, unknown> = {};
+  for (const [field, { is, must }] of Object.entries(CONTRACT)) {
+    const raw = value[field];
+    if (raw === undefined) continue;
+    if (!is(raw)) throw new Error(`'${field}' must be ${must}.`);
+    params[field] = raw;
+  }
+  // Every value placed here passed its own field's guard, and `CONTRACT` is proven
+  // exhaustive over `BlockParams` by the `satisfies` below.
+  return params as BlockParams;
 }
 
-// Identity (`name`/`version`) comes from this package's own `package.json`, so
-// the on-wire `{name}@{version}` reference can never drift from what npm
-// publishes; the bundler inlines the JSON import.
+// Identity (`name`/`version`) comes from this package's own `package.json`, so the
+// on-wire `{name}@{version}` reference can never drift from what npm publishes; the
+// bundler inlines the JSON import.
 export const kind = defineBlockKind<BlockParams>({
   name,
   version,
   parseInitializationParams,
 });
+
+// ---------------------------------------------------------------------------
+// Internals
+// ---------------------------------------------------------------------------
+
+type Guard<T> = (value: unknown) => value is T;
+
+/** A guard plus how to finish the sentence "'field' must be …". */
+type Check<T> = { readonly is: Guard<T>; readonly must: string };
+
+function check<T>(is: Guard<T>, must: string): Check<T> {
+  return { is, must };
+}
+
+const isString: Guard<string> = (v): v is string => typeof v === "string";
+const isBoolean: Guard<boolean> = (v): v is boolean => typeof v === "boolean";
+
+/** A finite number within the inclusive bounds the args lambda enforces. */
+function isNumberWithin(min: number, max: number): Guard<number> {
+  return (v): v is number => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
+}
+
+const STOP_CODON_TYPES: readonly string[] = ["amber", "ochre", "opal"];
+
+const isStopCodonTypes: Guard<StopCodonType[]> = (v): v is StopCodonType[] =>
+  Array.isArray(v) && v.every((t) => typeof t === "string" && STOP_CODON_TYPES.includes(t));
+
+/**
+ * A replacement for some subset of the stop codons. The amino acid is checked as a
+ * string and no further: the letter is one of a list the settings panel owns, and a
+ * kind cannot see that list without keeping a second copy of it.
+ */
+const isStopCodonReplacements: Guard<StopCodonReplacements> = (v): v is StopCodonReplacements => {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  return Object.entries(v).every(
+    ([k, aa]) => STOP_CODON_TYPES.includes(k) && (aa === undefined || typeof aa === "string"),
+  );
+};
+
+const CONTRACT = {
+  input: check(isPlRef, "a reference to an input dataset"),
+  presetId: check(isString, "a string"),
+  pattern: check(isString, "a string"),
+  useWildcards: check(isBoolean, "a boolean"),
+  unstranded: check(isBoolean, "a boolean"),
+  minReadsPerConsensus: check(isNumberWithin(1, Infinity), "a number of 1 or more"),
+  minUmiQuality: check(isNumberWithin(0, 50), "a number between 0 and 50"),
+  errorBudget: check(isNumberWithin(0, Infinity), "a number of 0 or more"),
+  maxIndels: check(isNumberWithin(0, Infinity), "a number of 0 or more"),
+  autoR1OnlyAssembly: check(isBoolean, "a boolean"),
+  filterInvalidPeptides: check(isBoolean, "a boolean"),
+  removeReadSingletons: check(isBoolean, "a boolean"),
+  stopCodonTypes: check(isStopCodonTypes, 'an array of "amber", "ochre" and "opal"'),
+  stopCodonReplacements: check(
+    isStopCodonReplacements,
+    "an object mapping stop codon names to amino acid letters",
+  ),
+  perProcessMemGB: check(isNumberWithin(1, Infinity), "a number of gigabytes, 1 or more"),
+  perProcessCPUs: check(isNumberWithin(1, Infinity), "a number of CPUs, 1 or more"),
+  customBlockLabel: check(isString, "a string"),
+} satisfies { [K in keyof Required<BlockParams>]: Check<NonNullable<BlockParams[K]>> };
