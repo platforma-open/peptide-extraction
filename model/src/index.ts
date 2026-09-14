@@ -7,22 +7,26 @@ import {
   isPColumnSpec,
   parseResourceMap,
 } from "@platforma-sdk/model";
+// The stop-codon vocabulary lives in the kind: its init-params contract names it,
+// and a kind cannot import from the model.
+import type {
+  BlockParams,
+  StopCodonReplacements,
+  StopCodonType,
+} from "@platforma-open/milaboratories.peptide-profiling.kind";
+import { kind } from "@platforma-open/milaboratories.peptide-profiling.kind";
 import type { PatternParts } from "./pattern";
 import { applyWildcards, parsePattern, validateRightTrim } from "./pattern";
 import { getPreset } from "./presets";
+import { deriveTemplateParams } from "./templateParams";
 
 export { parsePattern, validateRightTrim } from "./pattern";
 export type { LengthRange, PatternHalf, PatternParts } from "./pattern";
 export { allPresets, getPreset, presetsById } from "./presets";
 export type { Preset } from "./presets";
 
-export type StopCodonType = "amber" | "ochre" | "opal";
-
-export type StopCodonReplacements = {
-  amber?: string;
-  ochre?: string;
-  opal?: string;
-};
+export type * from "@platforma-open/milaboratories.peptide-profiling.kind";
+export { deriveTemplateParams } from "./templateParams";
 
 export type BlockData = {
   defaultBlockLabel?: string;
@@ -60,23 +64,40 @@ export const ProgressPattern =
 
 type BlockDataV1 = Omit<BlockData, "minUmiQuality">;
 
-const dataModel = new DataModelBuilder()
+/**
+ * A fresh block, seeded by whatever the creator or a project template supplied.
+ *
+ * Exported so the template round trip can be exercised without a running block:
+ * `deriveTemplateParams` and this function are the two halves of it.
+ */
+export const initBlockData = (params?: BlockParams): BlockData => ({
+  input: params?.input,
+  presetId: params?.presetId,
+  pattern: params?.pattern,
+  useWildcards: params?.useWildcards ?? true,
+  unstranded: params?.unstranded,
+  minReadsPerConsensus: params?.minReadsPerConsensus ?? 2,
+  minUmiQuality: params?.minUmiQuality ?? 20,
+  errorBudget: params?.errorBudget ?? 10,
+  maxIndels: params?.maxIndels ?? 1,
+  autoR1OnlyAssembly: params?.autoR1OnlyAssembly ?? true,
+  filterInvalidPeptides: params?.filterInvalidPeptides ?? true,
+  removeReadSingletons: params?.removeReadSingletons ?? false,
+  stopCodonTypes: params?.stopCodonTypes,
+  stopCodonReplacements: params?.stopCodonReplacements,
+  perProcessMemGB: params?.perProcessMemGB,
+  perProcessCPUs: params?.perProcessCPUs,
+  customBlockLabel: params?.customBlockLabel,
+  qcTableState: createPlDataTableStateV2(),
+  resultsTableState: createPlDataTableStateV2(),
+});
+
+const dataModel = new DataModelBuilder({ kind })
   .from<BlockDataV1>("v1")
   .migrate<BlockData>("v2", (v1) => ({ ...v1, minUmiQuality: 20 }))
-  .init(() => ({
-    minReadsPerConsensus: 2,
-    minUmiQuality: 20,
-    errorBudget: 10,
-    maxIndels: 1,
-    autoR1OnlyAssembly: true,
-    filterInvalidPeptides: true,
-    removeReadSingletons: false,
-    qcTableState: createPlDataTableStateV2(),
-    resultsTableState: createPlDataTableStateV2(),
-    useWildcards: true,
-  }));
+  .init(({ params }) => initBlockData(params));
 
-export const platforma = BlockModelV3.create(dataModel)
+export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .retentiveOutput("inputOptions", (ctx) => {
     return ctx.resultPool.getOptions((v) => {
@@ -395,6 +416,8 @@ export const platforma = BlockModelV3.create(dataModel)
       customBlockLabel: data.customBlockLabel ?? "",
     };
   })
+
+  .templateParams(deriveTemplateParams)
 
   .title(() => "Peptide Profiling")
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  AminoAcid,
   StopCodonReplacements,
   StopCodonType,
 } from "@platforma-open/milaboratories.peptide-profiling.model";
@@ -29,7 +30,7 @@ const stopCodonOptions: ListOption<StopCodonType>[] = [
   { label: "Opal/Umber (TGA)", value: "opal" },
 ];
 
-const aminoAcidOptions: ListOption<string>[] = [
+const aminoAcidOptions: ListOption<AminoAcid>[] = [
   { label: "A (Ala)", value: "A" },
   { label: "C (Cys)", value: "C" },
   { label: "D (Asp)", value: "D" },
@@ -60,7 +61,7 @@ const stopCodonSelection = computed<StopCodonType[]>({
 });
 
 const stopCodonReplacementModel = (type: StopCodonType) =>
-  computed<string | undefined>({
+  computed<AminoAcid | undefined>({
     get: () => app.model.data.stopCodonReplacements?.[type],
     set: (value) => {
       const current: StopCodonReplacements = { ...(app.model.data.stopCodonReplacements ?? {}) };
