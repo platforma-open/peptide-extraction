@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.peptide-profiling.software
 
+## 1.3.1
+
+### Patch Changes
+
+- 31b0f11: Structure the block onto the canonical layout and give it an init-params contract, so a project template can carry its settings
+
 ## 1.3.0
 
 ### Minor Changes
