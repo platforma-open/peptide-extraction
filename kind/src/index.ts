@@ -1,5 +1,7 @@
 import { assertParamsObject, defineBlockKind } from "@platforma-sdk/block-kind";
 import { isPlRef, type PlRef } from "@platforma-sdk/model";
+import { isBoolean, isPlainObject, isString, isUndefined } from "es-toolkit";
+import { isArray, isFinite, isNumber } from "es-toolkit/compat";
 import { name, version } from "../package.json" with { type: "json" };
 
 /** The three stop codons the block can translate to an amino acid instead of a stop. */
@@ -107,30 +109,33 @@ function check<T>(is: Guard<T>, must: string): Check<T> {
   return { is, must };
 }
 
-const isString: Guard<string> = (v): v is string => typeof v === "string";
-const isBoolean: Guard<boolean> = (v): v is boolean => typeof v === "boolean";
-
-/** A finite number within the inclusive bounds the args lambda enforces. */
+/**
+ * A finite number within the inclusive bounds the args lambda enforces.
+ *
+ * `isFinite` is es-toolkit's, which is `Number.isFinite` and so refuses a numeric
+ * string, unlike the global of the same name. It returns a plain boolean, so
+ * `isNumber` is what narrows the value for the comparisons that follow.
+ */
 function isNumberWithin(min: number, max: number): Guard<number> {
-  return (v): v is number => typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
+  return (v): v is number => isNumber(v) && isFinite(v) && v >= min && v <= max;
 }
 
 const STOP_CODON_TYPES: readonly string[] = ["amber", "ochre", "opal"];
 
+const isStopCodonType: Guard<StopCodonType> = (v): v is StopCodonType =>
+  isString(v) && STOP_CODON_TYPES.includes(v);
+
 const isStopCodonTypes: Guard<StopCodonType[]> = (v): v is StopCodonType[] =>
-  Array.isArray(v) && v.every((t) => typeof t === "string" && STOP_CODON_TYPES.includes(t));
+  isArray(v) && v.every(isStopCodonType);
 
 /**
  * A replacement for some subset of the stop codons. The amino acid is checked as a
  * string and no further: the letter is one of a list the settings panel owns, and a
  * kind cannot see that list without keeping a second copy of it.
  */
-const isStopCodonReplacements: Guard<StopCodonReplacements> = (v): v is StopCodonReplacements => {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
-  return Object.entries(v).every(
-    ([k, aa]) => STOP_CODON_TYPES.includes(k) && (aa === undefined || typeof aa === "string"),
-  );
-};
+const isStopCodonReplacements: Guard<StopCodonReplacements> = (v): v is StopCodonReplacements =>
+  isPlainObject(v) &&
+  Object.entries(v).every(([k, aa]) => isStopCodonType(k) && (isUndefined(aa) || isString(aa)));
 
 const CONTRACT = {
   input: check(isPlRef, "a reference to an input dataset"),

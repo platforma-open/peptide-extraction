@@ -24,7 +24,8 @@
   },
   "dependencies": {
     "@platforma-sdk/block-kind": "catalog:",
-    "@platforma-sdk/model": "catalog:"
+    "@platforma-sdk/model": "catalog:",
+    "es-toolkit": "catalog:"
   },
   "devDependencies": {
     "@milaboratories/ts-builder": "catalog:",

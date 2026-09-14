@@ -54,6 +54,9 @@ catalogs:
     ag-grid-vue3:
       specifier: ~34.1.2
       version: 34.1.2
+    es-toolkit:
+      specifier: 1.41.0
+      version: 1.41.0
     shx:
       specifier: 0.4.0
       version: 0.4.0
@@ -141,6 +144,9 @@ importers:
       '@types/node':
         specifier: '*'
         version: 25.3.2
+      es-toolkit:
+        specifier: 'catalog:'
+        version: 1.41.0
       typescript:
         specifier: '*'
         version: 7.0.2
@@ -5017,6 +5023,9 @@ packages:
 
   es-module-lexer@2.1.0:
     resolution: {integrity: sha512-n27zTYMjYu1aj4MjCWzSP7G9r75utsaoc8m61weK+W8JMBGGQybd43GstCXZ3WNmSFtGT9wi59qQTW6mhTR5LQ==}
+
+  es-toolkit@1.41.0:
+    resolution: {integrity: sha512-bDd3oRmbVgqZCJS6WmeQieOrzpl3URcWBUVDXxOELlUW2FuW+0glPOz1n0KnRie+PdyvUZcXz2sOn00c6pPRIA==}
 
   es-toolkit@1.42.0:
     resolution: {integrity: sha512-SLHIyY7VfDJBM8clz4+T2oquwTQxEzu263AyhVK4jREOAwJ+8eebaa4wM3nlvnAqhDrMm2EsA6hWHaQsMPQ1nA==}
@@ -13050,6 +13059,8 @@ snapshots:
   es-module-lexer@1.7.0: {}
 
   es-module-lexer@2.1.0: {}
+
+  es-toolkit@1.41.0: {}
 
   es-toolkit@1.42.0: {}
 
