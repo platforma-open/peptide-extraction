@@ -7,11 +7,41 @@ import { name, version } from "../package.json" with { type: "json" };
 /** The three stop codons the block can translate to an amino acid instead of a stop. */
 export type StopCodonType = "amber" | "ochre" | "opal";
 
-/** Which amino acid each selected stop codon becomes. One IUPAC letter per entry. */
+/**
+ * The twenty proteinogenic amino acids, by one-letter code.
+ *
+ * A stop codon's replacement is substituted into the genetic code the workflow
+ * translates with, so the letter ends up in `aaSeqPeptide` verbatim. Anything
+ * outside this set would be written into a peptide sequence as itself — a
+ * two-character value would even shift the residues after it.
+ */
+export type AminoAcid =
+  | "A"
+  | "C"
+  | "D"
+  | "E"
+  | "F"
+  | "G"
+  | "H"
+  | "I"
+  | "K"
+  | "L"
+  | "M"
+  | "N"
+  | "P"
+  | "Q"
+  | "R"
+  | "S"
+  | "T"
+  | "V"
+  | "W"
+  | "Y";
+
+/** Which amino acid each selected stop codon becomes. */
 export type StopCodonReplacements = {
-  amber?: string;
-  ochre?: string;
-  opal?: string;
+  amber?: AminoAcid;
+  ochre?: AminoAcid;
+  opal?: AminoAcid;
 };
 
 /**
@@ -128,14 +158,44 @@ const isStopCodonType: Guard<StopCodonType> = (v): v is StopCodonType =>
 const isStopCodonTypes: Guard<StopCodonType[]> = (v): v is StopCodonType[] =>
   isArray(v) && v.every(isStopCodonType);
 
+const AMINO_ACIDS: readonly string[] = [
+  "A",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "K",
+  "L",
+  "M",
+  "N",
+  "P",
+  "Q",
+  "R",
+  "S",
+  "T",
+  "V",
+  "W",
+  "Y",
+];
+
+const isAminoAcid: Guard<AminoAcid> = (v): v is AminoAcid => isString(v) && AMINO_ACIDS.includes(v);
+
 /**
- * A replacement for some subset of the stop codons. The amino acid is checked as a
- * string and no further: the letter is one of a list the settings panel owns, and a
- * kind cannot see that list without keeping a second copy of it.
+ * A replacement for some subset of the stop codons.
+ *
+ * The letter is checked against the alphabet, not merely as a string. This is one
+ * of the few places where the shape of a field is its meaning: the value is
+ * substituted into the genetic code and lands in the peptide sequence as written,
+ * so `"ZZ"` or `"?"` would be silently translated into the scientific output. The
+ * twenty letters are a constant of the domain rather than a list this block owns,
+ * so naming them here cannot drift from the settings panel.
  */
 const isStopCodonReplacements: Guard<StopCodonReplacements> = (v): v is StopCodonReplacements =>
   isPlainObject(v) &&
-  Object.entries(v).every(([k, aa]) => isStopCodonType(k) && (isUndefined(aa) || isString(aa)));
+  Object.entries(v).every(([k, aa]) => isStopCodonType(k) && (isUndefined(aa) || isAminoAcid(aa)));
 
 const CONTRACT = {
   input: check(isPlRef, "a reference to an input dataset"),
@@ -153,7 +213,7 @@ const CONTRACT = {
   stopCodonTypes: check(isStopCodonTypes, 'an array of "amber", "ochre" and "opal"'),
   stopCodonReplacements: check(
     isStopCodonReplacements,
-    "an object mapping stop codon names to amino acid letters",
+    "an object mapping stop codon names to one-letter amino acid codes",
   ),
   perProcessMemGB: check(isNumberWithin(1, Infinity), "a number of gigabytes, 1 or more"),
   perProcessCPUs: check(isNumberWithin(1, Infinity), "a number of CPUs, 1 or more"),

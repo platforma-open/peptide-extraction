@@ -150,4 +150,23 @@ describe("stopCodonReplacements", () => {
       "'stopCodonReplacements' must be",
     );
   });
+
+  it("accepts every letter the settings panel offers", () => {
+    for (const aa of "ACDEFGHIKLMNPQRSTVWY") {
+      expect(parse({ stopCodonReplacements: { amber: aa } })).toEqual({
+        stopCodonReplacements: { amber: aa },
+      });
+    }
+  });
+
+  it.each(["ZZ", "?", "B", "*", "", "q"])("refuses %o as an amino acid", (aa) => {
+    // The letter is substituted into the genetic code and reaches `aaSeqPeptide`
+    // as written, so anything outside the alphabet corrupts the peptide sequence
+    // rather than failing. "B" and "*" are the near misses: an ambiguity code and
+    // the stop symbol itself. Lowercase is refused because the panel never emits
+    // it, even though the workflow would upper-case it.
+    expect(() => parse({ stopCodonReplacements: { amber: aa } })).toThrow(
+      "'stopCodonReplacements' must be",
+    );
+  });
 });
