@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.peptide-profiling.workflow
 
+## 1.3.2
+
+### Patch Changes
+
+- ee91949: Release every package through npm trusted publishing (OIDC) so each package's trusted publisher is used before it expires.
+- Updated dependencies [ee91949]
+  - @platforma-open/milaboratories.peptide-profiling.software@1.3.2
+
 ## 1.3.1
 
 ### Patch Changes
