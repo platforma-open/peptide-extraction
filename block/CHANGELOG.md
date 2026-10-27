@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.peptide-profiling
 
+## 1.3.3
+
+### Patch Changes
+
+- 4a635e8: Update MiTool to the versions with the rebuilt Docker images. The old images trust the compromised eMudhra intermediate CAs.
+
 ## 1.3.2
 
 ### Patch Changes
