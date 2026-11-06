@@ -29,8 +29,9 @@ export type * from "@platforma-open/milaboratories.peptide-profiling.kind";
 export { deriveTemplateParams } from "./templateParams";
 
 export type BlockData = {
-  defaultBlockLabel?: string;
   customBlockLabel?: string;
+  /** Label of the chosen input dataset, shown in the subtitle; written when the input is picked. */
+  subtitleLabel?: string;
   input?: PlRef;
   presetId?: string;
   pattern?: string;
@@ -62,7 +63,9 @@ export const ProgressPrefix = "[==PROGRESS==]";
 export const ProgressPattern =
   /(?<stage>[^:]*):(?: *(?<progress>[0-9.]+)%)?(?: *ETA: *(?<eta>.+))?/;
 
-type BlockDataV1 = Omit<BlockData, "minUmiQuality">;
+type BlockDataV2 = Omit<BlockData, "subtitleLabel"> & { defaultBlockLabel?: string };
+
+type BlockDataV1 = Omit<BlockDataV2, "minUmiQuality">;
 
 /**
  * A fresh block, seeded by whatever the creator or a project template supplied.
@@ -94,7 +97,11 @@ export const initBlockData = (params?: BlockParams): BlockData => ({
 
 const dataModel = new DataModelBuilder({ kind })
   .from<BlockDataV1>("v1")
-  .migrate<BlockData>("v2", (v1) => ({ ...v1, minUmiQuality: 20 }))
+  .migrate<BlockDataV2>("v2", (v1) => ({ ...v1, minUmiQuality: 20 }))
+  .migrate<BlockData>("v3", ({ defaultBlockLabel, ...rest }) => ({
+    ...rest,
+    subtitleLabel: defaultBlockLabel,
+  }))
   .init(({ params }) => initBlockData(params));
 
 export const platforma = BlockModelV3.create({ dataModel, kind })
@@ -412,8 +419,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       stopCodonReplacements: data.stopCodonReplacements,
       perProcessMemGB: data.perProcessMemGB,
       perProcessCPUs: data.perProcessCPUs,
-      defaultBlockLabel: data.defaultBlockLabel ?? "",
-      customBlockLabel: data.customBlockLabel ?? "",
+      traceLabel: data.customBlockLabel || "Peptide Profiling",
     };
   })
 
@@ -421,7 +427,7 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
 
   .title(() => "Peptide Profiling")
 
-  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
+  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.subtitleLabel || "")
 
   .done();
 
