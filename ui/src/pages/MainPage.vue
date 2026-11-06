@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { plRefsEqual } from "@platforma-sdk/model";
 import type { PlAgHeaderComponentParams } from "@platforma-sdk/ui-vue";
 import {
   AgGridTheme,
@@ -32,13 +31,6 @@ import SampleReportPanel from "./SampleReportPanel.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 
 const app = useApp();
-
-watchEffect(() => {
-  const inputOption = app.model.outputs.inputOptions?.find(
-    (p) => app.model.data.input && plRefsEqual(p.ref, app.model.data.input),
-  );
-  app.model.data.defaultBlockLabel = inputOption?.label ?? "";
-});
 
 // Mirror the input's pairedness from the model output into BlockData
 watchEffect(() => {

@@ -98,13 +98,13 @@ describe("the template round trip", () => {
   it("does not carry the derived and view-only fields", () => {
     const seeded = roundTrip({
       ...configured,
-      defaultBlockLabel: "Sequencing data from Sample Set A",
+      subtitleLabel: "Sequencing data from Sample Set A",
       patternParts: { r1: { leftAnchor: "", rightAnchor: "", insertName: "R1" } },
       inputIsPairedEnd: true,
     });
 
     // Re-derived by the UI from `input` and `pattern`, and by the args lambda.
-    expect(seeded.defaultBlockLabel).toBeUndefined();
+    expect(seeded.subtitleLabel).toBeUndefined();
     expect(seeded.patternParts).toBeUndefined();
     expect(seeded.inputIsPairedEnd).toBeUndefined();
     // A fresh view, not the one the template author was looking at.

@@ -5,6 +5,8 @@ import type {
   StopCodonType,
 } from "@platforma-open/milaboratories.peptide-profiling.model";
 import { getPreset } from "@platforma-open/milaboratories.peptide-profiling.model";
+import type { PlRef } from "@platforma-sdk/model";
+import { plRefsEqual } from "@platforma-sdk/model";
 import type { ListOption } from "@platforma-sdk/ui-vue";
 import {
   PlAccordionSection,
@@ -93,6 +95,12 @@ watch(stopCodonSelection, (selected) => {
 
 const inputOptions = computed(() => app.model.outputs.inputOptions);
 
+function setInput(ref: PlRef | undefined) {
+  app.model.data.input = ref;
+  const picked = ref ? inputOptions.value?.find((o) => plRefsEqual(o.ref, ref)) : undefined;
+  app.model.data.subtitleLabel = picked?.label ?? "";
+}
+
 const autoR1OnlyAssembly = computed({
   get: () => app.model.data.autoR1OnlyAssembly ?? true,
   set: (value: boolean) => {
@@ -116,7 +124,7 @@ const hasUmi = computed(() => {
     :model-value="app.model.data.input"
     label="Select dataset"
     clearable
-    @update:model-value="(v) => (app.model.data.input = v)"
+    @update:model-value="setInput"
   />
 
   <PatternEditor />
