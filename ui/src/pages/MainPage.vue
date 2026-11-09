@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { plRefsEqual } from "@platforma-sdk/model";
 import type { PlAgHeaderComponentParams } from "@platforma-sdk/ui-vue";
 import {
   AgGridTheme,
@@ -32,23 +31,6 @@ import SampleReportPanel from "./SampleReportPanel.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 
 const app = useApp();
-
-// "" when no input is chosen; undefined while the chosen input's option is not loaded yet
-const subtitleLabel = computed<string | undefined>(() => {
-  const input = app.model.data.input;
-  if (!input) return "";
-  return app.model.outputs.inputOptions?.find((p) => plRefsEqual(p.ref, input))?.label;
-});
-
-watch(
-  subtitleLabel,
-  (label) => {
-    if (label !== undefined && label !== app.model.data.subtitleLabel) {
-      app.model.data.subtitleLabel = label;
-    }
-  },
-  { immediate: true },
-);
 
 // Mirror the input's pairedness from the model output into BlockData
 watchEffect(() => {
