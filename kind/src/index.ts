@@ -54,7 +54,7 @@ export type StopCodonReplacements = {
  * - `patternParts` is a parse of `pattern`. The pattern editor re-derives it on
  *   mount and the args lambda parses the pattern itself, so carrying it would
  *   only create a second copy that can disagree with the first.
- * - `defaultBlockLabel` is the label of the chosen input dataset and is rewritten
+ * - `subtitleLabel` is the label of the chosen input dataset and is rewritten
  *   from `input` whenever the selection changes. Only the scientist's own
  *   `customBlockLabel` is worth restoring.
  * - `inputIsPairedEnd` is a model output the UI mirrors back into the data so the
