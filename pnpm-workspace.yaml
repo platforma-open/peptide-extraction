@@ -8,34 +8,45 @@ packages:
   - workflow
 
 catalog:
-  "@milaboratories/ts-builder": 1.7.2
-  "@milaboratories/ts-configs": 1.4.0
-  "@platforma-sdk/workflow-tengo": 6.12.1
-  "@platforma-sdk/block-tools": 2.16.3
-  "@platforma-sdk/model": 1.84.1
-  "@platforma-sdk/ui-vue": 1.84.2
-  "@platforma-sdk/test": 1.84.1
-  "@platforma-sdk/tengo-builder": 4.1.4
-  "@platforma-sdk/package-builder": 3.16.0
+  "@milaboratories/ts-builder": 1.8.0
+  "@milaboratories/ts-configs": 1.4.1
+  "@platforma-sdk/workflow-tengo": 6.22.2
+  "@platforma-sdk/block-tools": 2.19.1
+  "@platforma-sdk/model": 1.88.16
+  "@platforma-sdk/ui-vue": 1.88.16
+  "@platforma-sdk/test": 1.88.16
+  "@platforma-sdk/tengo-builder": 4.1.21
+  "@platforma-sdk/package-builder": 3.17.0
   "@platforma-sdk/blocks-deps-updater": 2.2.0
 
   "@platforma-open/milaboratories.runenv-python-3": 1.7.10
   "@platforma-open/milaboratories.software-mitool": 2.3.1-174-main
 
   "@milaboratories/multi-sequence-alignment": 1.47.16
-  "@milaboratories/helpers": 1.14.5
+  "@milaboratories/helpers": 1.14.7
   "es-toolkit": 1.41.0
 
-  "vue": 3.5.24
+  "vue": 3.5.44
 
   "ag-grid-enterprise": &ag-grid ~34.1.2
   "ag-grid-vue3": *ag-grid
 
-  "turbo": 2.8.11
+  "turbo": ~2.11.10
 
   "shx": 0.4.0
   "@changesets/cli": 2.29.8
 
   "vitest": ^4.0.18
-  "@platforma-sdk/block-kind": 1.1.0
+  "@platforma-sdk/block-kind": 1.1.1
   typescript: ~5.9.3
+  cross-env: ~10.1.0
+minimumReleaseAgeExclude:
+  - "@milaboratories/*"
+  - "@platforma-sdk/*"
+  - "@platforma-open/*"
+allowBuilds:
+  "@platforma-open/milaboratories.software-mitool": false
+  "@milaboratories/tengo-tester": false
+  esbuild: false
+  protobufjs: false
+  "@milaboratories/pframes-rs-node": true
