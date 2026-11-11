@@ -2,7 +2,6 @@
 // translation. Adapted from mixcr-clonotyping's stop-codon-replacement.lib.tengo
 // for the simpler peptide-profiling case (one NT column per row).
 
-pt := import("@platforma-sdk/workflow-tengo:pt")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 text := import("text")
 
