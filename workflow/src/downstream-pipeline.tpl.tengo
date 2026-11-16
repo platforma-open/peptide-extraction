@@ -51,6 +51,9 @@ self.body(func(inputs) {
 	parts := inputs.patternParts
 	r1UmiName := parts.r1.umiName
 	r1InsertName := parts.r1.insertName
+	if is_undefined(r1InsertName) {
+		r1InsertName = ""
+	}
 	hasR1Umi := !is_undefined(parts.r1.umi) && !is_undefined(r1UmiName) && r1UmiName != ""
 	r2UmiName := ""
 	r2InsertName := ""
@@ -61,6 +64,11 @@ self.body(func(inputs) {
 		r2InsertName = parts.r2.insertName
 		hasR2Umi = !is_undefined(parts.r2.umi) && !is_undefined(r2UmiName) && r2UmiName != ""
 		hasR2Insert = !is_undefined(r2InsertName) && r2InsertName != ""
+	}
+	// The peptide is the Read 1 insert; when Read 1 carries no insert, it is the Read 2 insert.
+	peptideInsertName := r1InsertName
+	if r1InsertName == "" {
+		peptideInsertName = r2InsertName
 	}
 	// Any UMI on either read → run the dedup pipeline (refine/sort/consensus).
 	// No UMIs at all → skip those stages and go parse → tag-stat → collapse
@@ -172,7 +180,7 @@ self.body(func(inputs) {
 	//   extract QC metrics from all three mitool reports.
 	//
 	// Without UMI: skip refine/sort/consensus entirely. Run tag-stat directly 
-	//	 on parsed.mic using only the R1 tag, and pass empty placeholder reports
+	//	 on parsed.mic using only the peptide insert tag, and pass empty placeholder reports
 	//   to qc_checks.
 	// =========================================================================
 
@@ -183,9 +191,20 @@ self.body(func(inputs) {
 	tagStatInputFilename := "parsed.mic"
 
 	if hasAnyUmi {
-		// Refine -> sort -> consensus lives in its own sub-template so the
-		// whole chain forms a memoization boundary
-		umiRun = render.create(umiConsensusTpl, {
+		// Consensus keeps a read only if its insert scores >= 200 (+5 match, -4 mismatch), which no
+		// insert under 40 nt can reach. For a short peptide allow ~1 mismatch per 20 nt: floor(40 * L / 9).
+		// Based on the peptide capture only: the other capture may be truncated.
+		peptideHalf := r1InsertName != "" ? parts.r1 : parts.r2
+		peptideLength := peptideHalf.insertLength // undefined for a variable length (`*`)
+		consensusMinScore := undefined
+		if !is_undefined(peptideLength) {
+			l := is_map(peptideLength) ? int(peptideLength.min) : int(peptideLength)
+			if 40 * l / 9 < 200 {
+				consensusMinScore = 40 * l / 9
+			}
+		}
+
+		umiInputs := {
 			parsedMic: parsedMic,
 			hasR1Umi: hasR1Umi,
 			hasR2Umi: hasR2Umi,
@@ -200,7 +219,15 @@ self.body(func(inputs) {
 			mitoolCPUs: mitoolCPUs,
 			mitoolMemGB: mitoolMemGB,
 			isPairedEnd: isPairedEnd
-		})
+		}
+		// Only set when lowered, so runs on longer inserts keep identical inputs.
+		if !is_undefined(consensusMinScore) {
+			umiInputs.consensusMinAlignmentScore = consensusMinScore
+		}
+
+		// Refine -> sort -> consensus lives in its own sub-template so the
+		// whole chain forms a memoization boundary
+		umiRun = render.create(umiConsensusTpl, umiInputs)
 
 		tagStatInputMic = umiRun.output("consensusMic")
 		tagStatInputFilename = "consensus.mic"
@@ -220,7 +247,7 @@ self.body(func(inputs) {
 		cpu(mitoolCPUs).
 		mem(mitoolMem).
 		arg("tag-stat").
-		arg("-t").arg(r1InsertName)
+		arg("-t").arg(peptideInsertName)
 
 	if hasR1Umi {
 		tagStatBuilder = tagStatBuilder.arg("-t").arg(r1UmiName)
@@ -243,7 +270,7 @@ self.body(func(inputs) {
 		mem(collapseMemGB * units.GiB).
 		cpu(collapseCPUs)
 
-	tagStatSchema := [{ column: r1InsertName, type: "String" }]
+	tagStatSchema := [{ column: peptideInsertName, type: "String" }]
 	if hasR1Umi {
 		tagStatSchema = append(tagStatSchema, { column: r1UmiName, type: "String" })
 	}
@@ -263,7 +290,7 @@ self.body(func(inputs) {
 	})
 
 	// With any UMI: uniqueMoleculeCount = number of distinct UMI-tag groups per
-	//   peptide (tag-stat emits one row per distinct (R1, UMI[s]) combo, so
+	//   peptide (tag-stat emits one row per distinct (peptide insert, UMI[s]) combo, so
 	//   `count()` = number of unique molecules). Output is 5-column:
 	//   variantKey + uniqueMoleculeCount/Fraction + readCount/Fraction.
 	// Without UMI: no barcode dedup possible — uniqueMolecule* columns are not
@@ -272,11 +299,11 @@ self.body(func(inputs) {
 	//   blocks/mixcr-clonotyping/workflow/src/calculate-export-specs.lib.tengo).
 	collapsed := undefined
 	if hasAnyUmi {
-		collapsed = df.groupBy(r1InsertName).agg(
-			pt.col(r1InsertName).count().alias("uniqueMoleculeCount"),
+		collapsed = df.groupBy(peptideInsertName).agg(
+			pt.col(peptideInsertName).count().alias("uniqueMoleculeCount"),
 			pt.col("totalWeight").cast("Long").sum().alias("readCount")
 		).select(
-			pt.col(r1InsertName).alias("variantKey"),
+			pt.col(peptideInsertName).alias("variantKey"),
 			pt.col("uniqueMoleculeCount"),
 			pt.col("readCount"),
 			pt.col("uniqueMoleculeCount").cast("Double").truediv(
@@ -287,10 +314,10 @@ self.body(func(inputs) {
 			).alias("readFraction")
 		)
 	} else {
-		collapsed = df.groupBy(r1InsertName).agg(
+		collapsed = df.groupBy(peptideInsertName).agg(
 			pt.col("count").sum().alias("readCount")
 		).select(
-			pt.col(r1InsertName).alias("variantKey"),
+			pt.col(peptideInsertName).alias("variantKey"),
 			pt.col("readCount"),
 			pt.col("readCount").cast("Double").truediv(
 				pt.col("readCount").sum()

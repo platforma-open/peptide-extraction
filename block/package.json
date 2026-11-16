@@ -50,7 +50,7 @@
       "support": "mailto:support@milaboratories.com",
       "description": "Extract peptide sequences from FASTQ files of phage / yeast / mRNA display selection campaigns",
       "longDescription": "file:../docs/description.md",
-      "changelog": "file:../CHANGELOG.md",
+      "changelog": "file:CHANGELOG.md",
       "tags": [
         "upstream",
         "peptide"
