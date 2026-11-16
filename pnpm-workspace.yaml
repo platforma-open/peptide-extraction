@@ -44,7 +44,6 @@ minimumReleaseAgeExclude:
   - "@milaboratories/*"
   - "@platforma-sdk/*"
   - "@platforma-open/*"
-  - "@tybys/wasm-util@0.10.5"
 allowBuilds:
   "@milaboratories/tengo-tester": false
   esbuild: false
