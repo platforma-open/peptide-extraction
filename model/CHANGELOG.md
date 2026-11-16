@@ -1,5 +1,7 @@
 # @platforma-open/milaboratories.peptide-profiling.model
 
+## 1.4.0
+
 ## 1.3.2
 
 ### Patch Changes
