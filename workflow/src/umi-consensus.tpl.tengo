@@ -34,6 +34,7 @@ self.body(func(inputs) {
 	mitoolCPUs := inputs.mitoolCPUs
 	mitoolMemGB := inputs.mitoolMemGB
 	isPairedEnd := inputs.isPairedEnd
+	consensusMinAlignmentScore := inputs.consensusMinAlignmentScore // set only for short inserts
 
 	mitoolMem := string(mitoolMemGB) + "GiB"
 
@@ -111,6 +112,11 @@ self.body(func(inputs) {
 	}
 	if hasR2Insert && isPairedEnd {
 		consensusBuilder = consensusBuilder.arg("--assemble-tag").arg(r2InsertName)
+	}
+	// Otherwise mitool's default (200) applies.
+	if !is_undefined(consensusMinAlignmentScore) {
+		consensusBuilder = consensusBuilder.arg("-O").arg(
+			"aAssemblerParameters.minAlignmentScore=" + string(consensusMinAlignmentScore))
 	}
 
 	consensusCmd := consensusBuilder.

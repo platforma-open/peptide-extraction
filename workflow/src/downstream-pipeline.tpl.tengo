@@ -191,9 +191,20 @@ self.body(func(inputs) {
 	tagStatInputFilename := "parsed.mic"
 
 	if hasAnyUmi {
-		// Refine -> sort -> consensus lives in its own sub-template so the
-		// whole chain forms a memoization boundary
-		umiRun = render.create(umiConsensusTpl, {
+		// Consensus keeps a read only if its insert scores >= 200 (+5 match, -4 mismatch), which no
+		// insert under 40 nt can reach. For a short peptide allow ~1 mismatch per 20 nt: floor(40 * L / 9).
+		// Based on the peptide capture only: the other capture may be truncated.
+		peptideHalf := r1InsertName != "" ? parts.r1 : parts.r2
+		peptideLength := peptideHalf.insertLength // undefined for a variable length (`*`)
+		consensusMinScore := undefined
+		if !is_undefined(peptideLength) {
+			l := is_map(peptideLength) ? int(peptideLength.min) : int(peptideLength)
+			if 40 * l / 9 < 200 {
+				consensusMinScore = 40 * l / 9
+			}
+		}
+
+		umiInputs := {
 			parsedMic: parsedMic,
 			hasR1Umi: hasR1Umi,
 			hasR2Umi: hasR2Umi,
@@ -208,7 +219,15 @@ self.body(func(inputs) {
 			mitoolCPUs: mitoolCPUs,
 			mitoolMemGB: mitoolMemGB,
 			isPairedEnd: isPairedEnd
-		})
+		}
+		// Only set when lowered, so runs on longer inserts keep identical inputs.
+		if !is_undefined(consensusMinScore) {
+			umiInputs.consensusMinAlignmentScore = consensusMinScore
+		}
+
+		// Refine -> sort -> consensus lives in its own sub-template so the
+		// whole chain forms a memoization boundary
+		umiRun = render.create(umiConsensusTpl, umiInputs)
 
 		tagStatInputMic = umiRun.output("consensusMic")
 		tagStatInputFilename = "consensus.mic"
