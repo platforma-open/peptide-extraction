@@ -105,7 +105,10 @@ self.body(func(inputs) {
 	if hasR1Umi { consensusBuilder = consensusBuilder.arg("--group-tag").arg(r1UmiName) }
 	if hasR2Umi { consensusBuilder = consensusBuilder.arg("--group-tag").arg(r2UmiName) }
 
-	consensusBuilder = consensusBuilder.arg("--assemble-tag").arg(r1InsertName)
+	// Empty when Read 1 carries only a UMI (the peptide is then on Read 2).
+	if r1InsertName != "" {
+		consensusBuilder = consensusBuilder.arg("--assemble-tag").arg(r1InsertName)
+	}
 	if hasR2Insert && isPairedEnd {
 		consensusBuilder = consensusBuilder.arg("--assemble-tag").arg(r2InsertName)
 	}
