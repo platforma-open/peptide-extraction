@@ -29,6 +29,9 @@ export type * from "@platforma-open/milaboratories.peptide-profiling.kind";
 export { deriveTemplateParams } from "./templateParams";
 
 export type BlockData = {
+  /** The label of the chosen input, which the UI writes from `inputOptions` when its window
+   *  opens. Only the subtitle reads it. It stays out of `.args()`: there a window that opens
+   *  would put its block out of date, and the input's own trace already names the dataset. */
   defaultBlockLabel?: string;
   customBlockLabel?: string;
   input?: PlRef;
@@ -412,7 +415,6 @@ export const platforma = BlockModelV3.create({ dataModel, kind })
       stopCodonReplacements: data.stopCodonReplacements,
       perProcessMemGB: data.perProcessMemGB,
       perProcessCPUs: data.perProcessCPUs,
-      defaultBlockLabel: data.defaultBlockLabel ?? "",
       customBlockLabel: data.customBlockLabel ?? "",
     };
   })

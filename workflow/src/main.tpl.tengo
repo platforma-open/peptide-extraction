@@ -41,10 +41,9 @@ defaultXsvCPUs := 2
 wf.body(func(args) {
 	blockId := wf.blockId().getDataAsJson()
 
+	// The trace below extends the input's, which already names the dataset: the block's own entry
+	// needs no copy of that label.
 	traceLabel := args.customBlockLabel
-	if traceLabel == "" {
-		traceLabel = args.defaultBlockLabel
-	}
 	if traceLabel == "" {
 		traceLabel = "Peptide Profiling"
 	}
