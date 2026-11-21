@@ -1,5 +1,12 @@
 # @platforma-open/milaboratories.peptide-profiling.ui
 
+## 1.4.1
+
+### Patch Changes
+
+- Updated dependencies [4c5e3db]
+  - @platforma-open/milaboratories.peptide-profiling.model@1.4.1
+
 ## 1.4.0
 
 ### Patch Changes

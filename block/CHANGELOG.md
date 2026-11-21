@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.peptide-profiling
 
+## 1.4.1
+
+### Patch Changes
+
+- 4c5e3db: Keep the input's label out of the workflow arguments. The window writes it from the model's outputs when it opens, so a block made from a project template went out of date the first time it was opened and had to run again. The label now feeds only the subtitle; the trace of the results keeps naming the input dataset through the input's own trace, and the block's own entry is the custom label or "Peptide Profiling".
+
 ## 1.4.0
 
 ### Minor Changes
